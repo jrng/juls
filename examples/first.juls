@@ -1,0 +1,9 @@
+main :: ()
+{
+    a := false;
+    b := 3.14;
+    c := "FizzBuzz";
+    // d : s16 = 42;
+
+    exit(size_of(type_of(c)));
+}

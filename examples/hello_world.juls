@@ -1,0 +1,9 @@
+print :: (str: string)
+{
+    write(1, str.data, str.count);
+}
+
+main :: ()
+{
+    print("Hello world!\n");
+}
