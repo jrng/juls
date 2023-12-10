@@ -42,6 +42,13 @@ arm64_svc(StringBuilder *builder, u16 arg)
 }
 
 static inline void
+arm64_bl(StringBuilder *builder, s32 offset)
+{
+    u32 inst = 0x94000000 | ((u32) offset & 0x3FFFFFF);
+    string_builder_append_u32le(builder, inst);
+}
+
+static inline void
 arm64_move_immediate16(StringBuilder *builder, Arm64Register reg, u16 value)
 {
     u32 inst = 0xD2800000 | ((u32) value << 5) | reg;
@@ -77,6 +84,9 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
     if ((target_platform == JulsPlatformAndroid) ||
         (target_platform == JulsPlatformLinux))
     {
+        // bl main
+        arm64_bl(code, 4);
+
         // mov r8, #94
         arm64_move_immediate16(code, ARM64_R8, 94);
 
@@ -88,6 +98,9 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
     }
     else if (target_platform == JulsPlatformMacOs)
     {
+        // bl main
+        arm64_bl(code, 4);
+
         // mov r8, #1
         arm64_move_immediate16(code, ARM64_R16, 1);
 
@@ -110,8 +123,8 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
         {
             u64 offset = string_builder_get_size(code);
 
-            arm64_store_register(code, ARM64_R30, ARM64_SP, -8);
-            arm64_load_register(code, ARM64_R30, ARM64_SP, 8);
+            arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
+            arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
             arm64_ret(code);
 
             u64 size = string_builder_get_size(code) - offset;

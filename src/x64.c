@@ -18,6 +18,10 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
     if ((target_platform == JulsPlatformAndroid) ||
         (target_platform == JulsPlatformLinux))
     {
+        // call main
+        string_builder_append_u8(code, 0xE8);
+        string_builder_append_u32le(code, 16);
+
         // mov rax, 231
         string_builder_append_u8(code, 0x48);
         string_builder_append_u8(code, 0xC7);
@@ -35,6 +39,10 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
     }
     else if (target_platform == JulsPlatformMacOs)
     {
+        // call main
+        string_builder_append_u8(code, 0xE8);
+        string_builder_append_u32le(code, 16);
+
         // mov rax, 0x02000001
         string_builder_append_u8(code, 0x48);
         string_builder_append_u8(code, 0xC7);
