@@ -79,13 +79,18 @@ arm64_ret(StringBuilder *builder)
 static void
 generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, JulsPlatform target_platform)
 {
+    String entry_point_name = S("main");
+
+    u64 jump_location = string_builder_get_size(code);
+    u32 *jump_patch = 0;
+
     u64 _start_offset = string_builder_get_size(code);
 
     if ((target_platform == JulsPlatformAndroid) ||
         (target_platform == JulsPlatformLinux))
     {
         // bl main
-        arm64_bl(code, 4);
+        jump_patch = string_builder_append_size(code, 4);
 
         // mov r8, #94
         arm64_move_immediate16(code, ARM64_R8, 94);
@@ -99,7 +104,7 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
     else if (target_platform == JulsPlatformMacOs)
     {
         // bl main
-        arm64_bl(code, 4);
+        jump_patch = string_builder_append_size(code, 4);
 
         // mov r8, #1
         arm64_move_immediate16(code, ARM64_R16, 1);
@@ -115,6 +120,8 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
     array_append(symbol_table, ((SymbolEntry) { .name = S("_start"), .offset = _start_offset, .size = _start_size }));
 
+    u64 jump_target = 0;
+
     Ast *elem = parser->global_declarations.first;
 
     while (elem)
@@ -122,6 +129,11 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
         if (elem->type == AST_TYPE_FUNCTION_DECLARATION)
         {
             u64 offset = string_builder_get_size(code);
+
+            if (strings_are_equal(entry_point_name, elem->name))
+            {
+                jump_target = offset;
+            }
 
             arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
             arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
@@ -133,5 +145,14 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
         }
 
         elem = elem->next;
+    }
+
+    if (jump_target > 0)
+    {
+        *jump_patch = 0x94000000 | (((u32) (jump_target - jump_location) >> 2) & 0x3FFFFFF);
+    }
+    else
+    {
+        fprintf(stderr, "error: there is no entry point '%.*s'\n", (int) entry_point_name.count, entry_point_name.data);
     }
 }
