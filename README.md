@@ -23,7 +23,16 @@ is planned.
 
 - Linux Syscalls: [https://syscall.sh](https://syscall.sh)
 
+### x86-64
+
+- x86 and amd64 instruction reference: [https://www.felixcloutier.com/x86/](https://www.felixcloutier.com/x86/)
+- Online x86 and x64 Intel Instruction Assembler: [https://defuse.ca/online-x86-assembler.htm](https://defuse.ca/online-x86-assembler.htm)
+
 ### ARM
 
 - Arm Architecture Reference Manual for A-profile architecture: [https://developer.arm.com/documentation/ddi0487/ja/](https://developer.arm.com/documentation/ddi0487/ja/)
   C6.2 has a list of all the base instructions with their respective encodings.
+
+### ELF
+
+- Executable and Linking Format (ELF) Specification, Version 1.2: [https://refspecs.linuxbase.org/elf/elf.pdf](https://refspecs.linuxbase.org/elf/elf.pdf)
