@@ -1,3 +1,18 @@
+#define REX_W 0x48
+#define ModRM(mode, reg, rm) ((((mode) & 0x3) << 6) | (((reg) & 0x7) << 3) | ((rm) & 0x7))
+
+typedef enum
+{
+    X64_RAX = 0,
+    X64_RCX = 1,
+    X64_RDX = 2,
+    X64_RBX = 3,
+    X64_RSP = 4,
+    X64_RBP = 5,
+    X64_RSI = 6,
+    X64_RDI = 7,
+} X64Register;
+
 static inline void
 x64_syscall(StringBuilder *builder)
 {
@@ -8,6 +23,15 @@ static inline void
 x64_ret(StringBuilder *builder)
 {
     string_builder_append_u8(builder, 0xC3);
+}
+
+static inline void
+x64_move_immediate32_into_register(StringBuilder *builder, X64Register reg, u32 value)
+{
+    string_builder_append_u8(builder, REX_W);
+    string_builder_append_u8(builder, 0xC7);
+    string_builder_append_u8(builder, ModRM(3, 0, reg));
+    string_builder_append_u32le(builder, value);
 }
 
 static void
@@ -29,16 +53,10 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         jump_location = string_builder_get_size(code);
 
         // mov rax, 231
-        string_builder_append_u8(code, 0x48);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u8(code, 0xC0);
-        string_builder_append_u32le(code, 231);
+        x64_move_immediate32_into_register(code, X64_RAX, 231);
 
         // mov rdi, 42
-        string_builder_append_u8(code, 0x48);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u32le(code, 42);
+        x64_move_immediate32_into_register(code, X64_RDI, 42);
 
         // syscall
         x64_syscall(code);
@@ -48,20 +66,13 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         // call main
         string_builder_append_u8(code, 0xE8);
         jump_patch = string_builder_append_size(code, 4);
-
         jump_location = string_builder_get_size(code);
 
         // mov rax, 0x02000001
-        string_builder_append_u8(code, 0x48);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u8(code, 0xC0);
-        string_builder_append_u32le(code, 0x02000001);
+        x64_move_immediate32_into_register(code, X64_RAX, 0x02000001);
 
         // mov rdi, 42
-        string_builder_append_u8(code, 0x48);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u8(code, 0xC7);
-        string_builder_append_u32le(code, 42);
+        x64_move_immediate32_into_register(code, X64_RDI, 42);
 
         // syscall
         x64_syscall(code);
