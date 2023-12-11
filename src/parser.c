@@ -17,13 +17,13 @@ typedef enum
     AST_TYPE_EXPRESSION_BINOP_DIV               = 14,
     AST_TYPE_EXPRESSION_UNARY_NOT               = 15,
     AST_TYPE_EXPRESSION_UNARY_MINUS             = 16,
-    AST_TYPE_LITERAL_BOOLEAN_FALSE              = 17,
-    AST_TYPE_LITERAL_BOOLEAN_TRUE               = 18,
-    AST_TYPE_LITERAL_FLOAT                      = 19,
-    AST_TYPE_LITERAL_STRING                     = 20,
-    AST_TYPE_IDENTIFIER                         = 21,
-    AST_TYPE_QUERY_SIZE_OF                      = 22,
-    AST_TYPE_QUERY_TYPE_OF                      = 23,
+    AST_TYPE_LITERAL_BOOLEAN                    = 17,
+    AST_TYPE_LITERAL_FLOAT                      = 18,
+    AST_TYPE_LITERAL_STRING                     = 19,
+    AST_TYPE_IDENTIFIER                         = 20,
+    AST_TYPE_QUERY_SIZE_OF                      = 21,
+    AST_TYPE_QUERY_TYPE_OF                      = 22,
+    AST_TYPE_FUNCTION_CALL                      = 23,
 } AstType;
 
 typedef struct Ast Ast;
@@ -45,7 +45,24 @@ struct Ast
     Ast *right_expr;
 
     AstList children;
+
+    union
+    {
+        bool _bool;
+
+        u8  _u8;
+        u16 _u16;
+        u32 _u32;
+        u64 _u64;
+
+        s8  _s8;
+        s16 _s16;
+        s32 _s32;
+        s64 _s64;
+    };
 };
+
+#define For(iter, first) for (Ast *iter = (first); iter; iter = iter->next)
 
 typedef struct AstBucket AstBucket;
 
@@ -272,18 +289,24 @@ parse_primary(Parser *parser)
         {
             expect_token(parser, TOKEN_IDENTIFIER);
             expr = append_ast(&parser->ast_nodes, AST_TYPE_IDENTIFIER);
+
+            expr->name = parser->previous.lexeme;
         } break;
 
         case TOKEN_KEYWORD_TRUE:
         {
             expect_token(parser, TOKEN_KEYWORD_TRUE);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN_TRUE);
+            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN);
+
+            expr->_bool = true;
         } break;
 
         case TOKEN_KEYWORD_FALSE:
         {
             expect_token(parser, TOKEN_KEYWORD_FALSE);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN_FALSE);
+            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN);
+
+            expr->_bool = false;
         } break;
 
         case TOKEN_LITERAL_FLOAT:
@@ -370,9 +393,18 @@ parse_postfix_expression(Parser *parser)
 
             while (match_token(parser, '('))
             {
+                Ast *function_call = append_ast(&parser->ast_nodes, AST_TYPE_FUNCTION_CALL);
+
+                function_call->left_expr = expr;
+                expr = function_call;
+
                 for (;;)
                 {
-                    Ast *parameter = parse_expression(parser);
+                    Ast *argument = parse_expression(parser);
+
+                    if (!argument) return 0;
+
+                    ast_list_append(&function_call->children, argument);
 
                     if (!match_token(parser, ','))
                     {
@@ -771,12 +803,9 @@ print_ast(Ast *ast, s32 indent)
         {
             fprintf(stderr, "%*sFunctionDeclaration '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
 
-            Ast *elem = ast->children.first;
-
-            while (elem)
+            For(elem, ast->children.first)
             {
                 print_ast(elem, indent + 2);
-                elem = elem->next;
             }
         } break;
 
@@ -790,19 +819,35 @@ print_ast(Ast *ast, s32 indent)
             }
         } break;
 
-        case AST_TYPE_LITERAL_BOOLEAN_FALSE:
+        case AST_TYPE_LITERAL_BOOLEAN:
         {
-            fprintf(stderr, "%*sLiteralBoolean: false\n", indent, "");
-        } break;
-
-        case AST_TYPE_LITERAL_BOOLEAN_TRUE:
-        {
-            fprintf(stderr, "%*sLiteralBoolean: true\n", indent, "");
+            fprintf(stderr, "%*sLiteralBoolean: %s\n", indent, "", ast->_bool ? "true" : "false");
         } break;
 
         case AST_TYPE_LITERAL_STRING:
         {
             fprintf(stderr, "%*sLiteralString '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+        } break;
+
+        case AST_TYPE_IDENTIFIER:
+        {
+            fprintf(stderr, "%*sIdentifier '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+        } break;
+
+        case AST_TYPE_FUNCTION_CALL:
+        {
+            fprintf(stderr, "%*sFunctionCall\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+
+            fprintf(stderr, "%*s(\n", indent, "");
+
+            For(elem, ast->children.first)
+            {
+                print_ast(elem, indent + 2);
+            }
+
+            fprintf(stderr, "%*s)\n", indent, "");
         } break;
 
         default:

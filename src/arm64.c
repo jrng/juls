@@ -77,6 +77,56 @@ arm64_ret(StringBuilder *builder)
 }
 
 static void
+arm64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
+{
+    assert(func->type == AST_TYPE_FUNCTION_DECLARATION);
+
+    For(statement, func->children.first)
+    {
+        switch (statement->type)
+        {
+            case AST_TYPE_VARIABLE_DECLARATION:
+            {
+            } break;
+
+            case AST_TYPE_FUNCTION_CALL:
+            {
+                assert(statement->left_expr);
+
+                Ast *left = statement->left_expr;
+
+                if ((left->type == AST_TYPE_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
+                {
+                    // TODO: get return code from expression
+                    if ((target_platform == JulsPlatformAndroid) ||
+                        (target_platform == JulsPlatformLinux))
+                    {
+                        arm64_move_immediate16(code, ARM64_R8, 93);
+                        arm64_move_immediate16(code, ARM64_R0, 123);
+                        arm64_svc(code, 0);
+                    }
+                    else if (target_platform == JulsPlatformMacOs)
+                    {
+                        arm64_move_immediate16(code, ARM64_R16, 1);
+                        arm64_move_immediate16(code, ARM64_R0, 123);
+                        arm64_svc(code, 0x80);
+                    }
+                }
+                else
+                {
+                    assert(!"not implemented");
+                }
+            } break;
+
+            default:
+            {
+                fprintf(stderr, "error: ast type %u not supported in function declaration\n", statement->type);
+            } break;
+        }
+    }
+}
+
+static void
 generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, JulsPlatform target_platform)
 {
     String entry_point_name = S("main");
@@ -122,29 +172,28 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
     u64 jump_target = 0;
 
-    Ast *elem = parser->global_declarations.first;
-
-    while (elem)
+    For(decl, parser->global_declarations.first)
     {
-        if (elem->type == AST_TYPE_FUNCTION_DECLARATION)
+        if (decl->type == AST_TYPE_FUNCTION_DECLARATION)
         {
             u64 offset = string_builder_get_size(code);
 
-            if (strings_are_equal(entry_point_name, elem->name))
+            if (strings_are_equal(entry_point_name, decl->name))
             {
                 jump_target = offset;
             }
 
             arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
+
+            arm64_generate_function(code, decl, target_platform);
+
             arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
             arm64_ret(code);
 
             u64 size = string_builder_get_size(code) - offset;
 
-            array_append(symbol_table, ((SymbolEntry) { .name = elem->name, .offset = offset, .size = size }));
+            array_append(symbol_table, ((SymbolEntry) { .name = decl->name, .offset = offset, .size = size }));
         }
-
-        elem = elem->next;
     }
 
     if (jump_target > 0)
