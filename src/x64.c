@@ -1,5 +1,6 @@
 #define REX_W 0x48
 #define ModRM(mode, reg, rm) ((((mode) & 0x3) << 6) | (((reg) & 0x7) << 3) | ((rm) & 0x7))
+#define SIB(scale, index, base) ((((scale) & 0x3) << 6) | (((index) & 0x7) << 3) | ((base) & 0x7))
 
 typedef enum
 {
@@ -34,6 +35,28 @@ x64_move_immediate32_into_register(StringBuilder *builder, X64Register reg, u32 
     string_builder_append_u32le(builder, value);
 }
 
+static inline void
+x64_push_register(StringBuilder *builder, X64Register reg)
+{
+    string_builder_append_u8(builder, 0x50 | reg);
+}
+
+static inline void
+x64_pop_register(StringBuilder *builder, X64Register reg)
+{
+    string_builder_append_u8(builder, 0x58 | reg);
+}
+
+static inline void
+x64_move_indirect_into_register(StringBuilder *builder, X64Register dst, X64Register base_reg, u8 offset)
+{
+    string_builder_append_u8(builder, REX_W);
+    string_builder_append_u8(builder, 0x8B);
+    string_builder_append_u8(builder, ModRM(1, dst, base_reg));
+    string_builder_append_u8(builder, SIB(0, base_reg, base_reg));
+    string_builder_append_u8(builder, offset);
+}
+
 static void
 x64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
@@ -55,20 +78,26 @@ x64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_platfo
 
                 if ((left->type == AST_TYPE_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
                 {
+                    x64_move_immediate32_into_register(code, X64_RAX, 123);
+                    x64_push_register(code, X64_RAX);
+
                     // TODO: get return code from expression
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
                         x64_move_immediate32_into_register(code, X64_RAX, 60);
-                        x64_move_immediate32_into_register(code, X64_RDI, 123);
+                        x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
                         x64_syscall(code);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
                         x64_move_immediate32_into_register(code, X64_RAX, 0x02000001);
-                        x64_move_immediate32_into_register(code, X64_RDI, 123);
+                        x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
                         x64_syscall(code);
                     }
+
+                    // TODO: just increment stack pointer
+                    x64_pop_register(code, X64_RAX);
                 }
                 else
                 {

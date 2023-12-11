@@ -76,6 +76,34 @@ arm64_ret(StringBuilder *builder)
     string_builder_append_u32le(builder, inst);
 }
 
+static inline void
+arm64_push_register(StringBuilder *builder, Arm64Register reg)
+{
+    arm64_store_register(builder, reg, ARM64_SP, -16);
+}
+
+static inline void
+arm64_pop_register(StringBuilder *builder, Arm64Register reg)
+{
+    arm64_load_register(builder, reg, ARM64_SP, 16);
+}
+
+static inline void
+arm64_move_indirect_into_register(StringBuilder *builder, Arm64Register dst, Arm64Register base_reg, u16 offset)
+{
+    assert(!(offset & 7));
+
+    u32 inst = 0xF9400000 | (((u32) (offset >> 3) & 0xFFF) << 10) | ((u32) base_reg << 5) | dst;
+    string_builder_append_u32le(builder, inst);
+}
+
+static inline void
+arm64_add_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64Register src_reg, u16 value)
+{
+    u32 inst = 0x91000000 | (((u32) value & 0xFFF) << 10) | ((u32) src_reg << 5) | dst_reg;
+    string_builder_append_u32le(builder, inst);
+}
+
 static void
 arm64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
@@ -97,20 +125,25 @@ arm64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_plat
 
                 if ((left->type == AST_TYPE_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
                 {
+                    arm64_move_immediate16(code, ARM64_R0, 123);
+                    arm64_push_register(code, ARM64_R0);
+
                     // TODO: get return code from expression
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
                         arm64_move_immediate16(code, ARM64_R8, 93);
-                        arm64_move_immediate16(code, ARM64_R0, 123);
+                        arm64_move_indirect_into_register(code, ARM64_R0, ARM64_SP, 0);
                         arm64_svc(code, 0);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
                         arm64_move_immediate16(code, ARM64_R16, 1);
-                        arm64_move_immediate16(code, ARM64_R0, 123);
+                        arm64_move_indirect_into_register(code, ARM64_R0, ARM64_SP, 0);
                         arm64_svc(code, 0x80);
                     }
+
+                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, 16);
                 }
                 else
                 {
