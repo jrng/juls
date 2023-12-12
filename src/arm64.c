@@ -105,30 +105,50 @@ arm64_add_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64Regist
 }
 
 static void
-arm64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
+arm64_emit_expression(StringBuilder *code, Ast *expr)
 {
-    assert(func->type == AST_TYPE_FUNCTION_DECLARATION);
+    switch (expr->kind)
+    {
+        case AST_KIND_LITERAL_INTEGER:
+        {
+            // TODO: handle different sizes
+            arm64_move_immediate16(code, ARM64_R0, expr->_u16);
+            arm64_push_register(code, ARM64_R0);
+        } break;
+
+        default:
+        {
+            assert(!"expression not supported");
+        } break;
+    }
+}
+
+static void
+arm64_emit_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
+{
+    assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
     For(statement, func->children.first)
     {
-        switch (statement->type)
+        switch (statement->kind)
         {
-            case AST_TYPE_VARIABLE_DECLARATION:
+            case AST_KIND_VARIABLE_DECLARATION:
             {
             } break;
 
-            case AST_TYPE_FUNCTION_CALL:
+            case AST_KIND_FUNCTION_CALL:
             {
                 assert(statement->left_expr);
 
                 Ast *left = statement->left_expr;
 
-                if ((left->type == AST_TYPE_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
+                if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
                 {
-                    arm64_move_immediate16(code, ARM64_R0, 123);
-                    arm64_push_register(code, ARM64_R0);
+                    For(argument, statement->children.first)
+                    {
+                        arm64_emit_expression(code, argument);
+                    }
 
-                    // TODO: get return code from expression
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
@@ -153,7 +173,7 @@ arm64_generate_function(StringBuilder *code, Ast *func, JulsPlatform target_plat
 
             default:
             {
-                fprintf(stderr, "error: ast type %u not supported in function declaration\n", statement->type);
+                fprintf(stderr, "error: ast kind %u not supported in function declaration\n", statement->kind);
             } break;
         }
     }
@@ -207,7 +227,7 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
     For(decl, parser->global_declarations.first)
     {
-        if (decl->type == AST_TYPE_FUNCTION_DECLARATION)
+        if (decl->kind == AST_KIND_FUNCTION_DECLARATION)
         {
             u64 offset = string_builder_get_size(code);
 
@@ -218,7 +238,7 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
             arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
 
-            arm64_generate_function(code, decl, target_platform);
+            arm64_emit_function(code, decl, target_platform);
 
             arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
             arm64_ret(code);

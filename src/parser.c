@@ -1,30 +1,36 @@
 typedef enum
 {
-    AST_TYPE_STRUCT_DECLARATION                 =  0,
-    AST_TYPE_FUNCTION_DECLARATION               =  1,
-    AST_TYPE_VARIABLE_DECLARATION               =  2,
-    AST_TYPE_EXPRESSION_LOGIC_OR                =  3,
-    AST_TYPE_EXPRESSION_LOGIC_AND               =  4,
-    AST_TYPE_EXPRESSION_EQUAL                   =  5,
-    AST_TYPE_EXPRESSION_NOT_EQUAL               =  6,
-    AST_TYPE_EXPRESSION_COMPARE_LESS            =  7,
-    AST_TYPE_EXPRESSION_COMPARE_GREATER         =  8,
-    AST_TYPE_EXPRESSION_COMPARE_LESS_EQUAL      =  9,
-    AST_TYPE_EXPRESSION_COMPARE_GREATER_EQUAL   = 10,
-    AST_TYPE_EXPRESSION_BINOP_ADD               = 11,
-    AST_TYPE_EXPRESSION_BINOP_MINUS             = 12,
-    AST_TYPE_EXPRESSION_BINOP_MUL               = 13,
-    AST_TYPE_EXPRESSION_BINOP_DIV               = 14,
-    AST_TYPE_EXPRESSION_UNARY_NOT               = 15,
-    AST_TYPE_EXPRESSION_UNARY_MINUS             = 16,
-    AST_TYPE_LITERAL_BOOLEAN                    = 17,
-    AST_TYPE_LITERAL_FLOAT                      = 18,
-    AST_TYPE_LITERAL_STRING                     = 19,
-    AST_TYPE_IDENTIFIER                         = 20,
-    AST_TYPE_QUERY_SIZE_OF                      = 21,
-    AST_TYPE_QUERY_TYPE_OF                      = 22,
-    AST_TYPE_FUNCTION_CALL                      = 23,
-} AstType;
+    AST_KIND_STRUCT_DECLARATION                 =  0,
+    AST_KIND_FUNCTION_DECLARATION               =  1,
+    AST_KIND_VARIABLE_DECLARATION               =  2,
+    AST_KIND_EXPRESSION_LOGIC_OR                =  3,
+    AST_KIND_EXPRESSION_LOGIC_AND               =  4,
+    AST_KIND_EXPRESSION_EQUAL                   =  5,
+    AST_KIND_EXPRESSION_NOT_EQUAL               =  6,
+    AST_KIND_EXPRESSION_COMPARE_LESS            =  7,
+    AST_KIND_EXPRESSION_COMPARE_GREATER         =  8,
+    AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL      =  9,
+    AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL   = 10,
+    AST_KIND_EXPRESSION_BINOP_ADD               = 11,
+    AST_KIND_EXPRESSION_BINOP_MINUS             = 12,
+    AST_KIND_EXPRESSION_BINOP_MUL               = 13,
+    AST_KIND_EXPRESSION_BINOP_DIV               = 14,
+    AST_KIND_EXPRESSION_UNARY_NOT               = 15,
+    AST_KIND_EXPRESSION_UNARY_MINUS             = 16,
+    AST_KIND_LITERAL_BOOLEAN                    = 17,
+    AST_KIND_LITERAL_INTEGER                    = 18,
+    AST_KIND_LITERAL_FLOAT                      = 19,
+    AST_KIND_LITERAL_STRING                     = 20,
+    AST_KIND_IDENTIFIER                         = 21,
+    AST_KIND_QUERY_SIZE_OF                      = 22,
+    AST_KIND_QUERY_TYPE_OF                      = 23,
+    AST_KIND_FUNCTION_CALL                      = 24,
+} AstKind;
+
+typedef enum
+{
+    AST_FLAG_UNSIGNED = (1 << 0),
+} AstFlag;
 
 typedef struct Ast Ast;
 
@@ -36,15 +42,20 @@ typedef struct
 
 struct Ast
 {
-    AstType type;
+    AstKind kind;
+    u32 flags;
+
     Ast *next;
 
     String name;
 
+    Ast *type;
     Ast *left_expr;
     Ast *right_expr;
 
     AstList children;
+
+    s64 size;
 
     union
     {
@@ -109,7 +120,7 @@ ast_list_append(AstList *list, Ast *ast)
 }
 
 static Ast *
-append_ast(AstBucketArray *array, AstType ast_type)
+append_ast(AstBucketArray *array, AstKind ast_kind)
 {
     if (!array->last_bucket || (array->last_bucket->count >= ArrayCount(array->last_bucket->nodes)))
     {
@@ -139,7 +150,7 @@ append_ast(AstBucketArray *array, AstType ast_type)
         while (size--) *ptr++ = 0;
     }
 
-    node->type = ast_type;
+    node->kind = ast_kind;
 
     return node;
 }
@@ -279,6 +290,57 @@ expect_token(Parser *parser, TokenType token_type)
 static Ast *parse_expression(Parser *parser);
 
 static Ast *
+parse_type_definition(Parser *parser)
+{
+    Ast *type_def = 0;
+    Ast *current_def = 0;
+
+    for (;;)
+    {
+        if (match_token(parser, '*'))
+        {
+            assert(!"not implemented");
+        }
+        else if (match_token(parser, '['))
+        {
+            assert(!"not implemented");
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (match_token(parser, TOKEN_KEYWORD_TYPE_OF))
+    {
+        expect_token(parser, '(');
+
+        if (type_def)
+        {
+            assert(current_def);
+
+            current_def->left_expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF);
+            current_def = current_def->left_expr;
+            current_def->left_expr = parse_expression(parser);
+        }
+        else
+        {
+            type_def = append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF);
+            type_def->left_expr = parse_expression(parser);
+            current_def = type_def;
+        }
+
+        expect_token(parser, ')');
+    }
+    else
+    {
+        expect_token(parser, TOKEN_IDENTIFIER);
+    }
+
+    return type_def;
+}
+
+static Ast *
 parse_primary(Parser *parser)
 {
     Ast *expr = 0;
@@ -288,38 +350,15 @@ parse_primary(Parser *parser)
         case TOKEN_IDENTIFIER:
         {
             expect_token(parser, TOKEN_IDENTIFIER);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_IDENTIFIER);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER);
 
             expr->name = parser->previous.lexeme;
-        } break;
-
-        case TOKEN_KEYWORD_TRUE:
-        {
-            expect_token(parser, TOKEN_KEYWORD_TRUE);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN);
-
-            expr->_bool = true;
-        } break;
-
-        case TOKEN_KEYWORD_FALSE:
-        {
-            expect_token(parser, TOKEN_KEYWORD_FALSE);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_BOOLEAN);
-
-            expr->_bool = false;
-        } break;
-
-        case TOKEN_LITERAL_FLOAT:
-        {
-            expect_token(parser, TOKEN_LITERAL_FLOAT);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_FLOAT);
-            // TODO: store value
         } break;
 
         case TOKEN_LITERAL_STRING:
         {
             expect_token(parser, TOKEN_LITERAL_STRING);
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_LITERAL_STRING);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_STRING);
 
             String value = parser->previous.lexeme;
 
@@ -331,6 +370,36 @@ parse_primary(Parser *parser)
             // TODO: escape string value
 
             expr->name = value;
+        } break;
+
+        case TOKEN_LITERAL_INTEGER:
+        {
+            expect_token(parser, TOKEN_LITERAL_INTEGER);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_INTEGER);
+            // TODO: store value
+        } break;
+
+        case TOKEN_KEYWORD_TRUE:
+        {
+            expect_token(parser, TOKEN_KEYWORD_TRUE);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN);
+
+            expr->_bool = true;
+        } break;
+
+        case TOKEN_KEYWORD_FALSE:
+        {
+            expect_token(parser, TOKEN_KEYWORD_FALSE);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN);
+
+            expr->_bool = false;
+        } break;
+
+        case TOKEN_LITERAL_FLOAT:
+        {
+            expect_token(parser, TOKEN_LITERAL_FLOAT);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_FLOAT);
+            // TODO: store value
         } break;
 
         case TOKEN_KEYWORD_NULL:
@@ -369,20 +438,8 @@ parse_postfix_expression(Parser *parser)
             expect_token(parser, TOKEN_KEYWORD_SIZE_OF);
             expect_token(parser, '(');
 
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_QUERY_SIZE_OF);
-            // TODO: parse type definition
-            expr->left_expr = parse_expression(parser);
-
-            expect_token(parser, ')');
-        } break;
-
-        case TOKEN_KEYWORD_TYPE_OF:
-        {
-            expect_token(parser, TOKEN_KEYWORD_TYPE_OF);
-            expect_token(parser, '(');
-
-            expr = append_ast(&parser->ast_nodes, AST_TYPE_QUERY_TYPE_OF);
-            expr->left_expr = parse_expression(parser);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF);
+            expr->type = parse_type_definition(parser);
 
             expect_token(parser, ')');
         } break;
@@ -393,7 +450,7 @@ parse_postfix_expression(Parser *parser)
 
             while (match_token(parser, '('))
             {
-                Ast *function_call = append_ast(&parser->ast_nodes, AST_TYPE_FUNCTION_CALL);
+                Ast *function_call = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_CALL);
 
                 function_call->left_expr = expr;
                 expr = function_call;
@@ -425,19 +482,19 @@ parse_unary(Parser *parser)
 {
     if (match_token(parser, TOKEN_UNARY_NOT) || match_token(parser, TOKEN_BINOP_MINUS))
     {
-        AstType ast_type;
+        AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_UNARY_NOT)
         {
-            ast_type = AST_TYPE_EXPRESSION_UNARY_NOT;
+            ast_kind = AST_KIND_EXPRESSION_UNARY_NOT;
         }
         else
         {
             assert(parser->previous.type == TOKEN_BINOP_MINUS);
-            ast_type = AST_TYPE_EXPRESSION_UNARY_MINUS;
+            ast_kind = AST_KIND_EXPRESSION_UNARY_MINUS;
         }
 
-        Ast *expr = append_ast(&parser->ast_nodes, ast_type);
+        Ast *expr = append_ast(&parser->ast_nodes, ast_kind);
 
         expr->left_expr = parse_unary(parser);
 
@@ -456,22 +513,22 @@ parse_factor(Parser *parser)
 
     while (match_token(parser, TOKEN_BINOP_MUL) || match_token(parser, TOKEN_BINOP_DIV))
     {
-        AstType ast_type;
+        AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_BINOP_MUL)
         {
-            ast_type = AST_TYPE_EXPRESSION_BINOP_MUL;
+            ast_kind = AST_KIND_EXPRESSION_BINOP_MUL;
         }
         else
         {
             assert(parser->previous.type == TOKEN_BINOP_DIV);
-            ast_type = AST_TYPE_EXPRESSION_BINOP_DIV;
+            ast_kind = AST_KIND_EXPRESSION_BINOP_DIV;
         }
 
         Ast *left_expr = expr;
         Ast *right_expr = parse_unary(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_type);
+        expr = append_ast(&parser->ast_nodes, ast_kind);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -487,22 +544,22 @@ parse_term(Parser *parser)
 
     while (match_token(parser, TOKEN_BINOP_PLUS) || match_token(parser, TOKEN_BINOP_MINUS))
     {
-        AstType ast_type;
+        AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_BINOP_PLUS)
         {
-            ast_type = AST_TYPE_EXPRESSION_BINOP_ADD;
+            ast_kind = AST_KIND_EXPRESSION_BINOP_ADD;
         }
         else
         {
             assert(parser->previous.type == TOKEN_BINOP_MINUS);
-            ast_type = AST_TYPE_EXPRESSION_BINOP_MINUS;
+            ast_kind = AST_KIND_EXPRESSION_BINOP_MINUS;
         }
 
         Ast *left_expr = expr;
         Ast *right_expr = parse_factor(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_type);
+        expr = append_ast(&parser->ast_nodes, ast_kind);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -519,21 +576,21 @@ parse_comparison(Parser *parser)
     while (match_token(parser, TOKEN_LESS) || match_token(parser, TOKEN_GREATER) ||
            match_token(parser, TOKEN_LESS_EQUAL) || match_token(parser, TOKEN_GREATER_EQUAL))
     {
-        AstType ast_type;
+        AstKind ast_kind;
 
         switch (parser->previous.type)
         {
-            case TOKEN_LESS:            ast_type = AST_TYPE_EXPRESSION_COMPARE_LESS;            break;
-            case TOKEN_GREATER:         ast_type = AST_TYPE_EXPRESSION_COMPARE_GREATER;         break;
-            case TOKEN_LESS_EQUAL:      ast_type = AST_TYPE_EXPRESSION_COMPARE_LESS_EQUAL;      break;
-            case TOKEN_GREATER_EQUAL:   ast_type = AST_TYPE_EXPRESSION_COMPARE_GREATER_EQUAL;   break;
+            case TOKEN_LESS:            ast_kind = AST_KIND_EXPRESSION_COMPARE_LESS;            break;
+            case TOKEN_GREATER:         ast_kind = AST_KIND_EXPRESSION_COMPARE_GREATER;         break;
+            case TOKEN_LESS_EQUAL:      ast_kind = AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL;      break;
+            case TOKEN_GREATER_EQUAL:   ast_kind = AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL;   break;
             default: assert(!"");
         }
 
         Ast *left_expr = expr;
         Ast *right_expr = parse_term(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_type);
+        expr = append_ast(&parser->ast_nodes, ast_kind);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -549,22 +606,22 @@ parse_equality(Parser *parser)
 
     while (match_token(parser, TOKEN_EQUAL) || match_token(parser, TOKEN_NOT_EQUAL))
     {
-        AstType ast_type;
+        AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_EQUAL)
         {
-            ast_type = AST_TYPE_EXPRESSION_EQUAL;
+            ast_kind = AST_KIND_EXPRESSION_EQUAL;
         }
         else
         {
             assert(parser->previous.type == TOKEN_NOT_EQUAL);
-            ast_type = AST_TYPE_EXPRESSION_NOT_EQUAL;
+            ast_kind = AST_KIND_EXPRESSION_NOT_EQUAL;
         }
 
         Ast *left_expr = expr;
         Ast *right_expr = parse_comparison(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_type);
+        expr = append_ast(&parser->ast_nodes, ast_kind);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -583,7 +640,7 @@ parse_logic_and(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_equality(parser);
 
-        expr = append_ast(&parser->ast_nodes, AST_TYPE_EXPRESSION_LOGIC_AND);
+        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_AND);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -602,7 +659,7 @@ parse_logic_or(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_logic_and(parser);
 
-        expr = append_ast(&parser->ast_nodes, AST_TYPE_EXPRESSION_LOGIC_OR);
+        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_OR);
 
         expr->left_expr = left_expr;
         expr->right_expr = right_expr;
@@ -658,7 +715,7 @@ parse_expression(Parser *parser)
 static Ast *
 parse_variable_declaration(Parser *parser)
 {
-    Ast *ast = append_ast(&parser->ast_nodes, AST_TYPE_VARIABLE_DECLARATION);
+    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION);
 
     expect_token(parser, TOKEN_IDENTIFIER);
 
@@ -671,9 +728,14 @@ parse_variable_declaration(Parser *parser)
     }
     else
     {
-        expect_token(parser, TOKEN_COLON);
+        expect_token(parser, ':');
 
-        assert(!"not implemented");
+        ast->type = parse_type_definition(parser);
+
+        if (match_token(parser, '='))
+        {
+            ast->right_expr = parse_expression(parser);
+        }
     }
 
     return ast;
@@ -757,13 +819,13 @@ parse_declaration(Parser *parser)
 
     if (match_token(parser, TOKEN_KEYWORD_STRUCT))
     {
-        declaration = append_ast(&parser->ast_nodes, AST_TYPE_STRUCT_DECLARATION);
+        declaration = append_ast(&parser->ast_nodes, AST_KIND_STRUCT_DECLARATION);
 
         declaration->name = name;
     }
     else if (match_token(parser, '('))
     {
-        declaration = append_ast(&parser->ast_nodes, AST_TYPE_FUNCTION_DECLARATION);
+        declaration = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_DECLARATION);
 
         declaration->name = name;
 
@@ -797,19 +859,22 @@ parse_declaration(Parser *parser)
 static void
 print_ast(Ast *ast, s32 indent)
 {
-    switch (ast->type)
+    switch (ast->kind)
     {
-        case AST_TYPE_FUNCTION_DECLARATION:
+        case AST_KIND_FUNCTION_DECLARATION:
         {
             fprintf(stderr, "%*sFunctionDeclaration '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+            fprintf(stderr, "%*s{\n", indent, "");
 
             For(elem, ast->children.first)
             {
                 print_ast(elem, indent + 2);
             }
+
+            fprintf(stderr, "%*s}\n", indent, "");
         } break;
 
-        case AST_TYPE_VARIABLE_DECLARATION:
+        case AST_KIND_VARIABLE_DECLARATION:
         {
             fprintf(stderr, "%*sVariableDeclaration '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
 
@@ -819,22 +884,39 @@ print_ast(Ast *ast, s32 indent)
             }
         } break;
 
-        case AST_TYPE_LITERAL_BOOLEAN:
+        case AST_KIND_LITERAL_BOOLEAN:
         {
             fprintf(stderr, "%*sLiteralBoolean: %s\n", indent, "", ast->_bool ? "true" : "false");
         } break;
 
-        case AST_TYPE_LITERAL_STRING:
+        case AST_KIND_LITERAL_INTEGER:
+        {
+            fprintf(stderr, "%*sLiteralInteger\n", indent, "");
+        } break;
+
+        case AST_KIND_LITERAL_STRING:
         {
             fprintf(stderr, "%*sLiteralString '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
         } break;
 
-        case AST_TYPE_IDENTIFIER:
+        case AST_KIND_IDENTIFIER:
         {
             fprintf(stderr, "%*sIdentifier '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
         } break;
 
-        case AST_TYPE_FUNCTION_CALL:
+        case AST_KIND_QUERY_SIZE_OF:
+        {
+            fprintf(stderr, "%*sSizeOf\n", indent, "");
+            print_ast(ast->type, indent + 2);
+        } break;
+
+        case AST_KIND_QUERY_TYPE_OF:
+        {
+            fprintf(stderr, "%*sTypeOf\n", indent, "");
+            print_ast(ast->left_expr, indent + 2);
+        } break;
+
+        case AST_KIND_FUNCTION_CALL:
         {
             fprintf(stderr, "%*sFunctionCall\n", indent, "");
 
@@ -852,7 +934,7 @@ print_ast(Ast *ast, s32 indent)
 
         default:
         {
-            fprintf(stderr, "%*sunknown ast type: %u\n", indent, "", ast->type);
+            fprintf(stderr, "%*sunknown ast kind: %u\n", indent, "", ast->kind);
         } break;
     }
 }
@@ -865,6 +947,8 @@ parse(Parser *parser)
     while (!match_token(parser, TOKEN_END_OF_INPUT) && !parser->has_error)
     {
         Ast *decl = parse_declaration(parser);
+
+        if (!decl) return;
 
         ast_list_append(&parser->global_declarations, decl);
     }

@@ -5,7 +5,7 @@ typedef enum
     TOKEN_IDENTIFIER        =           2,
     TOKEN_LITERAL_STRING    =           3,
     TOKEN_LITERAL_INTEGER   =           4,
-    TOKEN_LITERAL_BOOLEAN   =           5,
+    TOKEN_LITERAL_BOOLEAN   =           5, // TODO: do we need this?
     TOKEN_LITERAL_FLOAT     =           6,
     TOKEN_KEYWORD_IF        =           7,
     TOKEN_KEYWORD_ELSE      =           8,
