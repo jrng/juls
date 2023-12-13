@@ -77,6 +77,7 @@ struct Ast
 
     String name;
 
+    Ast *decl;
     Ast *type_def;
     Ast *left_expr;
     Ast *right_expr;

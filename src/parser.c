@@ -229,6 +229,21 @@ parse_type_definition(Parser *parser)
     return type_def;
 }
 
+static s64
+parse_integer(String str)
+{
+    s64 result = 0;
+
+    for (s64 i = 0; i < str.count; i += 1)
+    {
+        // TODO: check for under- or overflow
+        assert((str.data[i] >= '0') && (str.data[i] <= '9'));
+        result = (10 * result) + (str.data[i] - '0');
+    }
+
+    return result;
+}
+
 static Ast *
 parse_primary(Parser *parser)
 {
@@ -266,9 +281,9 @@ parse_primary(Parser *parser)
         {
             expect_token(parser, TOKEN_LITERAL_INTEGER);
             expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_INTEGER);
-            // TODO: choose correct type
-            expr->type_id = parser->basetype_u64;
-            // TODO: store value
+            expr->type_id = parser->basetype_s64;
+
+            expr->_s64 = parse_integer(parser->previous.lexeme);
         } break;
 
         case TOKEN_KEYWORD_TRUE:

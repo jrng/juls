@@ -105,14 +105,32 @@ arm64_add_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64Regist
 }
 
 static void
-arm64_emit_expression(StringBuilder *code, Ast *expr)
+arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
 {
     switch (expr->kind)
     {
         case AST_KIND_LITERAL_INTEGER:
         {
-            // TODO: handle different sizes
-            arm64_move_immediate16(code, ARM64_R0, expr->_u16);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            assert(datatype->size == 8);
+
+            if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
+                (expr->_s64 >= 0))
+            {
+                if (expr->_u64 <= 0xFFFF)
+                {
+                    arm64_move_immediate16(code, ARM64_R0, expr->_u16);
+                }
+                else
+                {
+                    assert(!"not implemented");
+                }
+            }
+            else
+            {
+                assert(!"not implemented");
+            }
+
             arm64_push_register(code, ARM64_R0);
         } break;
 
@@ -124,7 +142,7 @@ arm64_emit_expression(StringBuilder *code, Ast *expr)
 }
 
 static void
-arm64_emit_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
+arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
@@ -146,7 +164,7 @@ arm64_emit_function(StringBuilder *code, Ast *func, JulsPlatform target_platform
                 {
                     For(argument, statement->children.first)
                     {
-                        arm64_emit_expression(code, argument);
+                        arm64_emit_expression(parser, code, argument);
                     }
 
                     if ((target_platform == JulsPlatformAndroid) ||
@@ -238,7 +256,7 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
             arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
 
-            arm64_emit_function(code, decl, target_platform);
+            arm64_emit_function(parser, code, decl, target_platform);
 
             arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
             arm64_ret(code);

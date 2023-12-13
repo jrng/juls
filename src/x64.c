@@ -27,11 +27,18 @@ x64_ret(StringBuilder *builder)
 }
 
 static inline void
-x64_move_immediate32_into_register(StringBuilder *builder, X64Register reg, u32 value)
+x64_move_immediate32_signed_into_register(StringBuilder *builder, X64Register reg, u32 value)
 {
     string_builder_append_u8(builder, REX_W);
     string_builder_append_u8(builder, 0xC7);
     string_builder_append_u8(builder, ModRM(3, 0, reg));
+    string_builder_append_u32le(builder, value);
+}
+
+static inline void
+x64_move_immediate32_unsigned_into_register(StringBuilder *builder, X64Register reg, u32 value)
+{
+    string_builder_append_u8(builder, 0xB8 | reg);
     string_builder_append_u32le(builder, value);
 }
 
@@ -58,14 +65,39 @@ x64_move_indirect_into_register(StringBuilder *builder, X64Register dst, X64Regi
 }
 
 static void
-x64_emit_expression(StringBuilder *code, Ast *expr)
+x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
 {
     switch (expr->kind)
     {
         case AST_KIND_LITERAL_INTEGER:
         {
-            // TODO: handle different sizes
-            x64_move_immediate32_into_register(code, X64_RAX, expr->_u32);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            assert(datatype->size == 8);
+
+            if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
+                (expr->_s64 >= 0))
+            {
+                if (expr->_u64 <= 0xFFFFFFFF)
+                {
+                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, expr->_u32);
+                }
+                else
+                {
+                    assert(!"not implemented");
+                }
+            }
+            else
+            {
+                if ((expr->_s64 >= S32MIN) && (expr->_s64 <= S32MAX))
+                {
+                    x64_move_immediate32_signed_into_register(code, X64_RAX, expr->_u32);
+                }
+                else
+                {
+                    assert(!"not implemented");
+                }
+            }
+
             x64_push_register(code, X64_RAX);
         } break;
 
@@ -77,7 +109,7 @@ x64_emit_expression(StringBuilder *code, Ast *expr)
 }
 
 static void
-x64_emit_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
+x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
@@ -99,19 +131,19 @@ x64_emit_function(StringBuilder *code, Ast *func, JulsPlatform target_platform)
                 {
                     For(argument, statement->children.first)
                     {
-                        x64_emit_expression(code, argument);
+                        x64_emit_expression(parser, code, argument);
                     }
 
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
-                        x64_move_immediate32_into_register(code, X64_RAX, 60);
+                        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 60);
                         x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
                         x64_syscall(code);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
-                        x64_move_immediate32_into_register(code, X64_RAX, 0x02000001);
+                        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
                         x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
                         x64_syscall(code);
                     }
@@ -152,10 +184,10 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         jump_location = string_builder_get_size(code);
 
         // mov rax, 231
-        x64_move_immediate32_into_register(code, X64_RAX, 231);
+        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 231);
 
         // mov rdi, 42
-        x64_move_immediate32_into_register(code, X64_RDI, 42);
+        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 42);
 
         // syscall
         x64_syscall(code);
@@ -168,10 +200,10 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         jump_location = string_builder_get_size(code);
 
         // mov rax, 0x02000001
-        x64_move_immediate32_into_register(code, X64_RAX, 0x02000001);
+        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
 
         // mov rdi, 42
-        x64_move_immediate32_into_register(code, X64_RDI, 42);
+        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 42);
 
         // syscall
         x64_syscall(code);
@@ -194,7 +226,7 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
                 jump_target = offset;
             }
 
-            x64_emit_function(code, decl, target_platform);
+            x64_emit_function(parser, code, decl, target_platform);
 
             x64_ret(code);
 

@@ -17,24 +17,21 @@ resolve_type(Parser *parser, Ast *type_def)
 
             if (type_id)
             {
-                Datatype *datatype = get_datatype(&parser->datatypes, type_id);
-
                 type_def->type_id = type_id;
             }
             else
             {
                 // TODO: search declaration and append new type
+                assert(!"not implemented");
             }
         } break;
 
         default:
         {
-            printf("kind = %u\n", type_def->kind);
             assert(!"type not supported");
         } break;
     }
 
-    printf("kind = %u\n", type_def->kind);
     assert(type_def->type_id);
 }
 
@@ -56,20 +53,15 @@ type_check_expression(Parser *parser, Ast *expr)
 
         case AST_KIND_IDENTIFIER:
         {
-            printf("type check identifier '%.*s'\n", (int) expr->name.count, expr->name.data);
-            assert(!expr->type_def);
+            expr->decl = find_declaration_by_name(expr, expr->name);
 
-            expr->left_expr = find_declaration_by_name(expr, expr->name);
-
-            if (expr->left_expr)
+            if (expr->decl)
             {
-                print_ast(expr->left_expr, 0);
-                printf("type_id = %u\n", expr->left_expr->type_id);
-                expr->type_id = expr->left_expr->type_id;
+                expr->type_id = expr->decl->type_id;
             }
             else
             {
-                printf("not found\n");
+                fprintf(stderr, "error: undeclared identifier '%.*s'\n", (int) expr->name.count, expr->name.data);
             }
         } break;
 
