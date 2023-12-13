@@ -129,6 +129,17 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
 
     switch (size)
     {
+        case 1:
+        {
+            // LDRB (immediate)
+            u32 inst = 0x39400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+
+            // STRB (immediate)
+            inst = 0x39000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
         case 2:
         {
             // LDRH (immediate)
@@ -137,6 +148,28 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
 
             // STRH (immediate)
             inst = 0x79000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            // LDR (immediate)
+            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+
+            // STR (immediate)
+            inst = 0xB9000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            // LDR (immediate)
+            u32 inst = 0xF9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+
+            // STR (immediate)
+            inst = 0xF9000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -152,6 +185,13 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
 {
     switch (expr->kind)
     {
+        case AST_KIND_LITERAL_BOOLEAN:
+        {
+            arm64_move_immediate16(code, ARM64_R0, expr->_bool ? 1 : 0);
+            arm64_push_register(code, ARM64_R0);
+            parser->current_stack_offset += 16;
+        } break;
+
         case AST_KIND_LITERAL_INTEGER:
         {
             Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);

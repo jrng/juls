@@ -115,6 +115,43 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 {
     switch (size)
     {
+        case 1:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x8A);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x8A);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x88);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x88);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
         case 2:
         {
             if (src_stack_offset <= 0xFF)
@@ -156,6 +193,84 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
         } break;
 
+        case 4:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        case 8:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
         default:
         {
             assert(!"not implemented");
@@ -168,6 +283,13 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
 {
     switch (expr->kind)
     {
+        case AST_KIND_LITERAL_BOOLEAN:
+        {
+            x64_move_immediate32_unsigned_into_register(code, X64_RAX, expr->_bool ? 1 : 0);
+            x64_push_register(code, X64_RAX);
+            parser->current_stack_offset += 8;
+        } break;
+
         case AST_KIND_LITERAL_INTEGER:
         {
             Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);

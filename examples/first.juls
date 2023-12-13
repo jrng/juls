@@ -1,9 +1,11 @@
 main :: ()
 {
-    // a := false;
+    a := false;
     // b := 3.14;
     // c := "FizzBuzz";
     d : s16 = 42;
+    e : u32 = 123;
+    f : u64 = 23;
 
-    exit(d);
+    exit(f);
 }
