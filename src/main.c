@@ -74,6 +74,7 @@ static inline void deallocate(void *ptr, u64 size);
 #include "allocator.c"
 #include "strings.c"
 #include "lexer.c"
+#include "ast.c"
 #include "parser.c"
 #include "type_checking.c"
 
@@ -529,8 +530,45 @@ int main(s32 argument_count, char **arguments)
     parser.lexer.input = input_file;
     parser.ast_nodes.first_bucket = 0;
     parser.ast_nodes.last_bucket = 0;
-    parser.global_declarations.first = 0;
-    parser.global_declarations.last = 0;
+    parser.global_declarations.kind = AST_KIND_GLOBAL_SCOPE;
+    parser.global_declarations.parent = 0;
+    parser.global_declarations.children.first = 0;
+    parser.global_declarations.children.last = 0;
+
+    parser.datatypes.count = 0;
+    parser.datatypes.allocated = 0;
+    parser.datatypes.items = 0;
+
+    // index 0 is the invalid datatype
+    array_append(&parser.datatypes, ((Datatype) { 0 }));
+
+    parser.basetype_bool = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .name = S("bool"), .size = 1 }));
+
+    parser.basetype_s8 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s8"), .size = 1 }));
+    parser.basetype_s16 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s16"), .size = 2 }));
+    parser.basetype_s32 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s32"), .size = 4 }));
+    parser.basetype_s64 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s64"), .size = 8 }));
+
+    parser.basetype_u8 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u8"), .size = 1 }));
+    parser.basetype_u16 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u16"), .size = 2 }));
+    parser.basetype_u32 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u32"), .size = 4 }));
+    parser.basetype_u64 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u64"), .size = 8 }));
+
+    parser.basetype_f32 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .name = S("f32"), .size = 4 }));
+    parser.basetype_f64 = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .name = S("f64"), .size = 8 }));
+    parser.basetype_string = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_STRING, .flags = 0, .name = S("string"), .size = 16 }));
 
     parse(&parser);
     type_checking(&parser);

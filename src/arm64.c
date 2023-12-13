@@ -225,7 +225,7 @@ generate_arm64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, J
 
     u64 jump_target = 0;
 
-    For(decl, parser->global_declarations.first)
+    For(decl, parser->global_declarations.children.first)
     {
         if (decl->kind == AST_KIND_FUNCTION_DECLARATION)
         {
