@@ -64,6 +64,105 @@ x64_move_indirect_into_register(StringBuilder *builder, X64Register dst, X64Regi
     string_builder_append_u8(builder, offset);
 }
 
+static inline void
+x64_add_immediate32_unsigned_to_register(StringBuilder *builder, X64Register reg, u32 value)
+{
+    if (value <= 0xFF)
+    {
+        // TODO: do we need this 64bit extension here?
+        // are the high bits set to zero if this is omitted?
+        string_builder_append_u8(builder, REX_W);
+        string_builder_append_u8(builder, 0x83);
+        string_builder_append_u8(builder, ModRM(3, 0, reg));
+        string_builder_append_u8(builder, (u8) value);
+    }
+    else
+    {
+        // TODO: do we need this 64bit extension here?
+        // are the high 32bit set to zero if this is omitted?
+        string_builder_append_u8(builder, REX_W);
+        string_builder_append_u8(builder, 0x81);
+        string_builder_append_u8(builder, ModRM(3, 0, reg));
+        string_builder_append_u32le(builder, value);
+    }
+}
+
+static inline void
+x64_subtract_immediate32_unsigned_from_register(StringBuilder *builder, X64Register reg, u32 value)
+{
+    if (value <= 0xFF)
+    {
+        // TODO: do we need this 64bit extension here?
+        // are the high bits set to zero if this is omitted?
+        string_builder_append_u8(builder, REX_W);
+        string_builder_append_u8(builder, 0x83);
+        string_builder_append_u8(builder, ModRM(3, 5, reg));
+        string_builder_append_u8(builder, (u8) value);
+    }
+    else
+    {
+        // TODO: do we need this 64bit extension here?
+        // are the high 32bit set to zero if this is omitted?
+        string_builder_append_u8(builder, REX_W);
+        string_builder_append_u8(builder, 0x81);
+        string_builder_append_u8(builder, ModRM(3, 5, reg));
+        string_builder_append_u32le(builder, value);
+    }
+}
+
+static inline void
+x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 src_stack_offset, u64 size)
+{
+    switch (size)
+    {
+        case 2:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        default:
+        {
+            assert(!"not implemented");
+        } break;
+    }
+}
+
 static void
 x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
 {
@@ -99,6 +198,26 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
             }
 
             x64_push_register(code, X64_RAX);
+            parser->current_stack_offset += 8;
+        } break;
+
+        case AST_KIND_IDENTIFIER:
+        {
+            assert(expr->decl);
+
+            Ast *decl = expr->decl;
+
+            assert(decl->stack_offset > 0);
+
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = datatype->size;
+
+            assert(stack_size <= 0xFFFFFFFF);
+            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            parser->current_stack_offset += stack_size;
+
+            x64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
         } break;
 
         default:
@@ -113,12 +232,33 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
+    parser->current_stack_offset = 0;
+
     For(statement, func->children.first)
     {
         switch (statement->kind)
         {
             case AST_KIND_VARIABLE_DECLARATION:
             {
+                Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+
+                u64 stack_size = datatype->size;
+
+                assert(stack_size <= 0xFFFFFFFF);
+                x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+                parser->current_stack_offset += stack_size;
+                statement->stack_offset = parser->current_stack_offset;
+
+                if (statement->right_expr)
+                {
+                    x64_emit_expression(parser, code, statement->right_expr);
+
+                    // TODO: does the size match the expression?
+                    x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+
+                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, 8);
+                    parser->current_stack_offset -= 8;
+                }
             } break;
 
             case AST_KIND_FUNCTION_CALL:
@@ -148,8 +288,8 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
                         x64_syscall(code);
                     }
 
-                    // TODO: just increment stack pointer
-                    x64_pop_register(code, X64_RAX);
+                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, 8);
+                    parser->current_stack_offset -= 8;
                 }
                 else
                 {

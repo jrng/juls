@@ -85,6 +85,7 @@ struct Ast
     AstList children;
 
     s64 size;
+    u64 stack_offset;
 
     union
     {

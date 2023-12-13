@@ -93,6 +93,7 @@ arm64_move_indirect_into_register(StringBuilder *builder, Arm64Register dst, Arm
 {
     assert(!(offset & 7));
 
+    // LDR (immediate)
     u32 inst = 0xF9400000 | (((u32) (offset >> 3) & 0xFFF) << 10) | ((u32) base_reg << 5) | dst;
     string_builder_append_u32le(builder, inst);
 }
@@ -100,8 +101,50 @@ arm64_move_indirect_into_register(StringBuilder *builder, Arm64Register dst, Arm
 static inline void
 arm64_add_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64Register src_reg, u16 value)
 {
+    assert(value <= 0xFFF);
+
+    // ADD (immediate)
     u32 inst = 0x91000000 | (((u32) value & 0xFFF) << 10) | ((u32) src_reg << 5) | dst_reg;
     string_builder_append_u32le(builder, inst);
+}
+
+static inline void
+arm64_subtract_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64Register src_reg, u16 value)
+{
+    assert(value <= 0xFFF);
+
+    // SUB (immediate)
+    u32 inst = 0xD1000000 | (((u32) value & 0xFFF) << 10) | ((u32) src_reg << 5) | dst_reg;
+    string_builder_append_u32le(builder, inst);
+}
+
+static inline void
+arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 src_stack_offset, u64 size)
+{
+    assert(!(dst_stack_offset & 7));
+    assert(!(src_stack_offset & 7));
+
+    assert(dst_stack_offset <= 0x7FFF);
+    assert(src_stack_offset <= 0x7FFF);
+
+    switch (size)
+    {
+        case 2:
+        {
+            // LDRH (immediate)
+            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+
+            // STRH (immediate)
+            inst = 0x79000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        default:
+        {
+            assert(!"not implemented");
+        } break;
+    }
 }
 
 static void
@@ -132,6 +175,26 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
             }
 
             arm64_push_register(code, ARM64_R0);
+            parser->current_stack_offset += 16;
+        } break;
+
+        case AST_KIND_IDENTIFIER:
+        {
+            assert(expr->decl);
+
+            Ast *decl = expr->decl;
+
+            assert(decl->stack_offset > 0);
+
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset += stack_size;
+
+            arm64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
         } break;
 
         default:
@@ -146,12 +209,33 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
+    parser->current_stack_offset = 0;
+
     For(statement, func->children.first)
     {
         switch (statement->kind)
         {
             case AST_KIND_VARIABLE_DECLARATION:
             {
+                Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+
+                u64 stack_size = Align(datatype->size, 16);
+
+                assert(stack_size <= 0xFFFF);
+                arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+                parser->current_stack_offset += stack_size;
+                statement->stack_offset = parser->current_stack_offset;
+
+                if (statement->right_expr)
+                {
+                    arm64_emit_expression(parser, code, statement->right_expr);
+
+                    // TODO: does the size match the expression?
+                    arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+
+                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, 16);
+                    parser->current_stack_offset -= 16;
+                }
             } break;
 
             case AST_KIND_FUNCTION_CALL:
@@ -182,6 +266,7 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
                     }
 
                     arm64_add_immediate12(code, ARM64_SP, ARM64_SP, 16);
+                    parser->current_stack_offset -= 16;
                 }
                 else
                 {

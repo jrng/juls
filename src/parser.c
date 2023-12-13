@@ -27,6 +27,9 @@ typedef struct
     DatatypeId basetype_f32;
     DatatypeId basetype_f64;
     DatatypeId basetype_string;
+
+    // TODO: this is code generation
+    u64 current_stack_offset;
 } Parser;
 
 static inline void
