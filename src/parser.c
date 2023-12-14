@@ -12,6 +12,7 @@ typedef struct
 
     DatatypeTable datatypes;
 
+    DatatypeId basetype_void;
     DatatypeId basetype_bool;
 
     DatatypeId basetype_s8;
@@ -685,7 +686,18 @@ parse_statement(Parser *parser)
 
         case TOKEN_KEYWORD_IF:
         {
-            assert(!"not implemented");
+            ast = append_ast(&parser->ast_nodes, AST_KIND_IF);
+
+            expect_token(parser, TOKEN_KEYWORD_IF);
+
+            expect_token(parser, '(');
+
+            ast_set_left_expr(ast, parse_expression(parser));
+
+            expect_token(parser, ')');
+
+            // TODO: store somewhere
+            parse_statement(parser);
         } break;
 
         case TOKEN_KEYWORD_FOR:
@@ -698,12 +710,16 @@ parse_statement(Parser *parser)
             assert(!"not implemented");
         } break;
 
-#if 0
         case TOKEN_KEYWORD_RETURN:
         {
-            assert(!"not implemented");
+            ast = append_ast(&parser->ast_nodes, AST_KIND_RETURN);
+
+            expect_token(parser, TOKEN_KEYWORD_RETURN);
+
+            ast_set_left_expr(ast, parse_expression(parser));
+
+            expect_token(parser, ';');
         } break;
-#endif
 
         case '{':
         {
@@ -759,6 +775,7 @@ parse_declaration(Parser *parser)
         declaration = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_DECLARATION);
 
         declaration->name = name;
+        declaration->address = S64MAX;
 
         if (!match_token(parser, ')'))
         {

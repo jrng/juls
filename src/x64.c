@@ -537,7 +537,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 }
 
 static void
-x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
+x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform target_platform)
 {
     switch (expr->kind)
     {
@@ -614,8 +614,8 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
         case AST_KIND_EXPRESSION_BINOP_ADD:
         case AST_KIND_EXPRESSION_BINOP_MINUS:
         {
-            x64_emit_expression(parser, code, expr->left_expr);
-            x64_emit_expression(parser, code, expr->right_expr);
+            x64_emit_expression(parser, code, expr->left_expr, target_platform);
+            x64_emit_expression(parser, code, expr->right_expr, target_platform);
 
             Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
             Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
@@ -652,8 +652,82 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
             x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
         } break;
 
+        case AST_KIND_FUNCTION_CALL:
+        {
+            assert(expr->left_expr);
+
+            Ast *left = expr->left_expr;
+
+            if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
+            {
+            }
+            else if (left->kind == AST_KIND_IDENTIFIER)
+            {
+                assert(expr->decl);
+
+                Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
+                u64 return_type_stack_size = return_type->size;
+
+                assert(return_type_stack_size <= 0xFFFFFFFF);
+                x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) return_type_stack_size);
+                parser->current_stack_offset += return_type_stack_size;
+            }
+            else
+            {
+                assert(!"not implemented");
+            }
+
+            u64 arguments_stack_size = 0;
+
+            For(argument, expr->children.first)
+            {
+                // TODO: does the size match the expression?
+                x64_emit_expression(parser, code, argument, target_platform);
+
+                Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
+
+                u64 stack_size = datatype->size;
+                arguments_stack_size += stack_size;
+            }
+
+            if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
+            {
+                if ((target_platform == JulsPlatformAndroid) ||
+                    (target_platform == JulsPlatformLinux))
+                {
+                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, 60);
+                    x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
+                    x64_syscall(code);
+                }
+                else if (target_platform == JulsPlatformMacOs)
+                {
+                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
+                    x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
+                    x64_syscall(code);
+                }
+            }
+            else if (left->kind == AST_KIND_IDENTIFIER)
+            {
+                assert(expr->decl);
+                assert(expr->decl->address != S64MAX);
+
+                string_builder_append_u8(code, 0xE8);
+                s64 jump_offset = string_builder_get_size(code) + 4;
+                string_builder_append_u32le(code, (u32) (expr->decl->address - jump_offset));
+            }
+            else
+            {
+                assert(!"not implemented");
+            }
+
+            assert(arguments_stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) arguments_stack_size);
+            parser->current_stack_offset -= arguments_stack_size;
+        } break;
+
         default:
         {
+            printf("kind = %u\n", expr->kind);
             assert(!"expression not supported");
         } break;
     }
@@ -664,7 +738,26 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
+    func->address = string_builder_get_size(code);
+
     parser->current_stack_offset = 0;
+
+    Datatype *return_type = get_datatype(&parser->datatypes, func->type_id);
+    u64 return_type_stack_size = return_type->size;
+    parser->current_stack_offset += return_type_stack_size;
+
+    ForReversed(parameter, func->parameters.first)
+    {
+        Datatype *datatype = get_datatype(&parser->datatypes, parameter->type_id);
+
+        u64 stack_size = datatype->size;
+
+        parser->current_stack_offset += stack_size;
+        parameter->stack_offset = parser->current_stack_offset;
+    }
+
+    // that's the call return address
+    parser->current_stack_offset += 8;
 
     For(statement, func->children.first)
     {
@@ -683,7 +776,7 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 
                 if (statement->right_expr)
                 {
-                    x64_emit_expression(parser, code, statement->right_expr);
+                    x64_emit_expression(parser, code, statement->right_expr, target_platform);
 
                     // TODO: does the size match the expression?
                     x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
@@ -694,56 +787,33 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
                 }
             } break;
 
-            case AST_KIND_FUNCTION_CALL:
+            case AST_KIND_RETURN:
             {
                 assert(statement->left_expr);
 
-                Ast *left = statement->left_expr;
+                x64_emit_expression(parser, code, statement->left_expr, target_platform);
 
-                u64 arguments_stack_size = 0;
+                x64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
 
-                For(argument, statement->children.first)
-                {
-                    x64_emit_expression(parser, code, argument);
+                assert(return_type_stack_size <= 0xFFFFFFFF);
+                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) return_type_stack_size);
+                parser->current_stack_offset -= return_type_stack_size;
 
-                    Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
-
-                    u64 stack_size = datatype->size;
-                    arguments_stack_size += stack_size;
-                }
-
-                if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
-                {
-
-                    if ((target_platform == JulsPlatformAndroid) ||
-                        (target_platform == JulsPlatformLinux))
-                    {
-                        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 60);
-                        x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
-                        x64_syscall(code);
-                    }
-                    else if (target_platform == JulsPlatformMacOs)
-                    {
-                        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
-                        x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
-                        x64_syscall(code);
-                    }
-                }
-                else
-                {
-                    assert(!"not implemented");
-                }
-
-                assert(arguments_stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) arguments_stack_size);
-                parser->current_stack_offset -= arguments_stack_size;
+                x64_ret(code);
+                parser->current_stack_offset -= 8;
             } break;
 
             default:
             {
-                fprintf(stderr, "error: ast kind %u not supported in function declaration\n", statement->kind);
+                x64_emit_expression(parser, code, statement, target_platform);
             } break;
         }
+    }
+
+    if (!func->type_def)
+    {
+        x64_ret(code);
+        parser->current_stack_offset -= 8;
     }
 }
 
@@ -768,8 +838,8 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         // mov rax, 231
         x64_move_immediate32_unsigned_into_register(code, X64_RAX, 231);
 
-        // mov rdi, 42
-        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 42);
+        // mov rdi, 0
+        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 0);
 
         // syscall
         x64_syscall(code);
@@ -784,8 +854,8 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
         // mov rax, 0x02000001
         x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
 
-        // mov rdi, 42
-        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 42);
+        // mov rdi, 0
+        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 0);
 
         // syscall
         x64_syscall(code);
@@ -809,8 +879,6 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
             }
 
             x64_emit_function(parser, code, decl, target_platform);
-
-            x64_ret(code);
 
             u64 size = string_builder_get_size(code) - offset;
 

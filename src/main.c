@@ -53,6 +53,11 @@ typedef uint64_t u64;
 #define S32MIN 0x80000000
 #define S32MAX 0x7FFFFFFF
 
+#define S64MIN 0x8000000000000000
+#define S64MAX 0x7FFFFFFFFFFFFFFF
+
+#define U64MAX 0xFFFFFFFFFFFFFFFF
+
 #define Align(value, alignment) (((value) + (alignment) - (s64) 1) & ~((alignment) - (s64) 1))
 #define ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -544,6 +549,9 @@ int main(s32 argument_count, char **arguments)
 
     // index 0 is the invalid datatype
     array_append(&parser.datatypes, ((Datatype) { 0 }));
+
+    parser.basetype_void = parser.datatypes.count;
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_VOID, .flags = 0, .name = S("void"), .size = 0 }));
 
     parser.basetype_bool = parser.datatypes.count;
     array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .name = S("bool"), .size = 1 }));

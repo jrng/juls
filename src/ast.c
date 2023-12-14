@@ -1,9 +1,10 @@
 typedef enum
 {
-    DATATYPE_BOOLEAN    = 0,
-    DATATYPE_INTEGER    = 1,
-    DATATYPE_FLOAT      = 2,
-    DATATYPE_STRING     = 3,
+    DATATYPE_VOID       = 0,
+    DATATYPE_BOOLEAN    = 1,
+    DATATYPE_INTEGER    = 2,
+    DATATYPE_FLOAT      = 3,
+    DATATYPE_STRING     = 4,
 } DatatypeKind;
 
 typedef enum
@@ -57,6 +58,8 @@ typedef enum
     AST_KIND_QUERY_SIZE_OF                      = 23,
     AST_KIND_QUERY_TYPE_OF                      = 24,
     AST_KIND_FUNCTION_CALL                      = 25,
+    AST_KIND_IF                                 = 26,
+    AST_KIND_RETURN                             = 27,
 } AstKind;
 
 typedef struct Ast Ast;
@@ -73,6 +76,7 @@ struct Ast
     DatatypeId type_id;
 
     Ast *next;
+    Ast *prev;
     Ast *parent;
 
     String name;
@@ -87,6 +91,7 @@ struct Ast
 
     s64 size;
     u64 stack_offset;
+    s64 address;
 
     union
     {
@@ -105,6 +110,7 @@ struct Ast
 };
 
 #define For(iter, first) for (Ast *iter = (first); iter; iter = iter->next)
+#define ForReversed(iter, last) for (Ast *iter = (last); iter; iter = iter->prev)
 
 typedef struct AstBucket AstBucket;
 
@@ -155,10 +161,12 @@ ast_list_append(AstList *list, Ast *ast)
 {
     if (list->last)
     {
+        ast->prev = list->last;
         list->last->next = ast;
     }
     else
     {
+        ast->prev = 0;
         list->first = ast;
     }
 
@@ -231,6 +239,16 @@ print_ast(Ast *ast, s32 indent)
         case AST_KIND_FUNCTION_DECLARATION:
         {
             fprintf(stderr, "%*sFunctionDeclaration '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+
+            fprintf(stderr, "%*s(\n", indent, "");
+
+            For(elem, ast->parameters.first)
+            {
+                print_ast(elem, indent + 2);
+            }
+
+            fprintf(stderr, "%*s)\n", indent, "");
+
             fprintf(stderr, "%*s{\n", indent, "");
 
             For(elem, ast->children.first)
@@ -251,6 +269,22 @@ print_ast(Ast *ast, s32 indent)
             }
         } break;
 
+        case AST_KIND_EXPRESSION_BINOP_ADD:
+        {
+            fprintf(stderr, "%*sBinopAdd\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_EXPRESSION_BINOP_MINUS:
+        {
+            fprintf(stderr, "%*sBinopMinus\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
         case AST_KIND_LITERAL_BOOLEAN:
         {
             fprintf(stderr, "%*sLiteralBoolean(type_id = %u): %s\n", indent, "", ast->type_id, ast->_bool ? "true" : "false");
@@ -258,7 +292,7 @@ print_ast(Ast *ast, s32 indent)
 
         case AST_KIND_LITERAL_INTEGER:
         {
-            fprintf(stderr, "%*sLiteralInteger(type_id = %u)\n", indent, "", ast->type_id);
+            fprintf(stderr, "%*sLiteralInteger(type_id = %u) %" PRId64 "\n", indent, "", ast->type_id, ast->_s64);
         } break;
 
         case AST_KIND_LITERAL_FLOAT:
@@ -304,6 +338,32 @@ print_ast(Ast *ast, s32 indent)
             fprintf(stderr, "%*s)\n", indent, "");
         } break;
 
+        case AST_KIND_IF:
+        {
+            fprintf(stderr, "%*sIf\n", indent, "");
+
+            fprintf(stderr, "%*s(\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+
+            fprintf(stderr, "%*s)\n", indent, "");
+
+            fprintf(stderr, "%*s{\n", indent, "");
+
+            For(elem, ast->children.first)
+            {
+                print_ast(elem, indent + 2);
+            }
+
+            fprintf(stderr, "%*s}\n", indent, "");
+        } break;
+
+        case AST_KIND_RETURN:
+        {
+            fprintf(stderr, "%*sReturn\n", indent, "");
+            print_ast(ast->left_expr, indent + 2);
+        } break;
+
         default:
         {
             fprintf(stderr, "%*sunknown ast kind: %u\n", indent, "", ast->kind);
@@ -337,6 +397,19 @@ find_declaration_by_name(Ast *ast, String name)
             }
 
             if (result) break;
+
+            For(parameter, ast->parameters.first)
+            {
+                assert(parameter->kind == AST_KIND_VARIABLE_DECLARATION);
+
+                if (strings_are_equal(parameter->name, name))
+                {
+                    result = parameter;
+                    break;
+                }
+            }
+
+            if (result) break;
         }
         else if (ast->kind == AST_KIND_GLOBAL_SCOPE)
         {
@@ -352,6 +425,24 @@ find_declaration_by_name(Ast *ast, String name)
             }
 
             if (result) break;
+        }
+    }
+
+    return result;
+}
+
+static Ast *
+find_function_declaration_by_name(Ast *first, String name)
+{
+    Ast *result = 0;
+
+    For(decl, first)
+    {
+        if ((decl->kind == AST_KIND_FUNCTION_DECLARATION) &&
+            strings_are_equal(decl->name, name))
+        {
+            result = decl;
+            break;
         }
     }
 

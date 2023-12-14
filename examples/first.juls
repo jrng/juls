@@ -1,9 +1,15 @@
+test :: (a: s64) -> s64
+{
+    return a + a;
+}
+
 main :: ()
 {
     a := false;
     // b := 3.14;
     // c := "FizzBuzz";
-    d : s8 = 42;
+    d : s64 = 42;
+    // d : s8 = 42;
     e : u32 = 123;
     f : s8 = 23;
 
@@ -11,5 +17,6 @@ main :: ()
     h : s8 = 70;
 
     // exit(d + f + 4);
-    exit(g - h);
+    // exit(g - h);
+    exit(test(d));
 }

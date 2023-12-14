@@ -115,8 +115,16 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
         case AST_KIND_EXPRESSION_BINOP_ADD:
         case AST_KIND_EXPRESSION_BINOP_MINUS:
         {
-            type_check_expression(parser, expr->left_expr, 0);
-            type_check_expression(parser, expr->right_expr, 0);
+            if (expr->left_expr->kind == AST_KIND_LITERAL_INTEGER)
+            {
+                type_check_expression(parser, expr->right_expr, 0);
+                type_check_expression(parser, expr->left_expr, expr->right_expr->type_id);
+            }
+            else
+            {
+                type_check_expression(parser, expr->left_expr, 0);
+                type_check_expression(parser, expr->right_expr, expr->left_expr->type_id);
+            }
 
             Datatype *left_type = get_datatype(&parser->datatypes, expr->left_expr->type_id);
             Datatype *right_type = get_datatype(&parser->datatypes, expr->right_expr->type_id);
@@ -161,6 +169,44 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
             expr->type_id = type_id;
         } break;
 
+        case AST_KIND_FUNCTION_CALL:
+        {
+            For(argument, expr->children.first)
+            {
+                type_check_expression(parser, argument, 0);
+            }
+
+            assert(expr->left_expr);
+
+            Ast *left_expr = expr->left_expr;
+
+            if (left_expr->kind == AST_KIND_IDENTIFIER)
+            {
+                if (strings_are_equal(left_expr->name, S("exit")))
+                {
+                    expr->type_id = parser->basetype_void;
+                }
+                else
+                {
+                    expr->decl = find_function_declaration_by_name(parser->global_declarations.children.first, left_expr->name);
+
+                    if (expr->decl)
+                    {
+                        assert(expr->decl->type_id);
+                        expr->type_id = expr->decl->type_id;
+                    }
+                    else
+                    {
+                        fprintf(stderr, "error: undeclared identifier '%.*s'\n", (int) left_expr->name.count, left_expr->name.data);
+                    }
+                }
+            }
+            else
+            {
+                fprintf(stderr, "error: function pointers are not supported yet\n");
+            }
+        } break;
+
         default:
         {
             assert(!"expression not supported");
@@ -180,7 +226,6 @@ type_check_statement(Parser *parser, Ast *statement)
             if (statement->type_def)
             {
                 resolve_type(parser, statement->type_def);
-
                 statement->type_id = statement->type_def->type_id;
 
                 if (statement->right_expr)
@@ -202,17 +247,22 @@ type_check_statement(Parser *parser, Ast *statement)
             }
         } break;
 
-        case AST_KIND_FUNCTION_CALL:
+        case AST_KIND_IF:
         {
-            For(argument, statement->children.first)
-            {
-                type_check_expression(parser, argument, 0);
-            }
+        } break;
+
+        case AST_KIND_RETURN:
+        {
+            // TODO: pass the return type of the function as a hint
+            type_check_expression(parser, statement->left_expr, 0);
+            statement->type_id = statement->left_expr->type_id;
+
+            // TODO: compare to return type of the function
         } break;
 
         default:
         {
-            assert(!"statement not supported");
+            type_check_expression(parser, statement, 0);
         } break;
     }
 }
@@ -230,6 +280,21 @@ type_checking(Parser *parser)
         {
             case AST_KIND_FUNCTION_DECLARATION:
             {
+                if (decl->type_def)
+                {
+                    resolve_type(parser, decl->type_def);
+                    decl->type_id = decl->type_def->type_id;
+                }
+                else
+                {
+                    decl->type_id = parser->basetype_void;
+                }
+
+                For(parameter, decl->parameters.first)
+                {
+                    type_check_statement(parser, parameter);
+                }
+
                 For(statement, decl->children.first)
                 {
                     type_check_statement(parser, statement);
