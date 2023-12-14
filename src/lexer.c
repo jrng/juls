@@ -36,6 +36,7 @@ typedef enum
     TOKEN_UNARY_NOT         = '!', //  33
     TOKEN_AND_EQUAL         = /* &= */ 34,
     TOKEN_XOR_EQUAL         = /* ^= */ 35,
+    TOKEN_RIGHT_ARROW       = /* -> */ 36,
     TOKEN_BINOP_MOD         = '%', //  37
     TOKEN_BINOP_AND         = '&', //  38
     TOKEN_LEFT_PAREN        = '(', //  40
@@ -334,7 +335,7 @@ get_next_token(Lexer *lexer)
         case '*': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_MUL_EQUAL : TOKEN_BINOP_MUL);
         case '+': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_PLUS_EQUAL : TOKEN_BINOP_PLUS);
         case ',': return make_token(*lexer, TOKEN_COMMA);
-        case '-': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_MINUS_EQUAL : TOKEN_BINOP_MINUS);
+        case '-': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_MINUS_EQUAL : matches_character(lexer, '>') ? TOKEN_RIGHT_ARROW : TOKEN_BINOP_MINUS);
         case '.': return make_token(*lexer, TOKEN_DOT);
         case '/': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_DIV_EQUAL : TOKEN_BINOP_DIV);
         case ':': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_COLON_EQUAL : matches_character(lexer, ':') ? TOKEN_COLON_COLON : TOKEN_COLON);

@@ -722,6 +722,22 @@ parse_statement(Parser *parser)
 }
 
 static Ast *
+parse_parameter(Parser *parser)
+{
+    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION);
+
+    expect_token(parser, TOKEN_IDENTIFIER);
+
+    ast->name = parser->previous.lexeme;
+
+    expect_token(parser, ':');
+
+    ast_set_type_def(ast, parse_type_definition(parser));
+
+    return ast;
+}
+
+static Ast *
 parse_declaration(Parser *parser)
 {
     expect_token(parser, TOKEN_IDENTIFIER);
@@ -744,9 +760,30 @@ parse_declaration(Parser *parser)
 
         declaration->name = name;
 
-        expect_token(parser, ')');
+        if (!match_token(parser, ')'))
+        {
+            for (;;)
+            {
+                Ast *parameter = parse_parameter(parser);
 
-        // TODO: parse return type
+                if (!parameter) return 0;
+
+                ast_list_append(&declaration->parameters, parameter);
+                parameter->parent = declaration;
+
+                if (!match_token(parser, ','))
+                {
+                    break;
+                }
+            }
+
+            expect_token(parser, ')');
+        }
+
+        if (match_token(parser, TOKEN_RIGHT_ARROW))
+        {
+            ast_set_type_def(declaration, parse_type_definition(parser));
+        }
 
         expect_token(parser, '{');
 

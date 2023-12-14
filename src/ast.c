@@ -83,6 +83,7 @@ struct Ast
     Ast *right_expr;
 
     AstList children;
+    AstList parameters;
 
     s64 size;
     u64 stack_offset;
