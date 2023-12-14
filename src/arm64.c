@@ -119,6 +119,250 @@ arm64_subtract_immediate12(StringBuilder *builder, Arm64Register dst_reg, Arm64R
 }
 
 static inline void
+arm64_add_registers(StringBuilder *builder, Arm64Register dst_reg, Arm64Register src_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // ADD (extended register)
+                inst = 0x0B208000 | ((u32) src_reg << 16) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // ADD (extended register)
+                inst = 0x0B200000 | ((u32) src_reg << 16) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 2:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // ADD (extended register)
+                inst = 0x0B208000 | ((u32) src_reg << 16) | (0x1 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // ADD (extended register)
+                inst = 0x0B200000 | ((u32) src_reg << 16) | (0x1 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // ADD (extended register)
+                inst = 0x0B208000 | ((u32) src_reg << 16) | (0x2 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // ADD (extended register)
+                inst = 0x0B200000 | ((u32) src_reg << 16) | (0x2 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // ADD (extended register)
+                inst = 0x8B208000 | ((u32) src_reg << 16) | (0x3 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // ADD (extended register)
+                inst = 0x8B200000 | ((u32) src_reg << 16) | (0x3 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+    }
+}
+
+static inline void
+arm64_subtract_registers(StringBuilder *builder, Arm64Register dst_reg, Arm64Register src_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUB (extended register)
+                inst = 0x4B208000 | ((u32) src_reg << 16) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // SUB (extended register)
+                inst = 0x4B200000 | ((u32) src_reg << 16) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 2:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUB (extended register)
+                inst = 0x4B208000 | ((u32) src_reg << 16) | (0x1 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // SUB (extended register)
+                inst = 0x4B200000 | ((u32) src_reg << 16) | (0x1 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUB (extended register)
+                inst = 0x44208000 | ((u32) src_reg << 16) | (0x2 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // SUB (extended register)
+                inst = 0x4B200000 | ((u32) src_reg << 16) | (0x2 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUB (extended register)
+                inst = 0xCB208000 | ((u32) src_reg << 16) | (0x3 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+            else
+            {
+                // SUB (extended register)
+                inst = 0xCB200000 | ((u32) src_reg << 16) | (0x3 << 13) | ((u32) dst_reg << 5) | dst_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+    }
+}
+
+static inline void
+arm64_copy_from_stack_to_register(StringBuilder *builder, Arm64Register dst_reg, u64 src_stack_offset, u64 size)
+{
+    assert(!(src_stack_offset & 7));
+    assert(src_stack_offset <= 0x7FFF);
+
+    switch (size)
+    {
+        case 1:
+        {
+            // LDRB (immediate)
+            u32 inst = 0x39400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 2:
+        {
+            // LDRH (immediate)
+            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            // LDR (immediate)
+            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            // LDR (immediate)
+            u32 inst = 0xF9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        default:
+        {
+            assert(!"not allowed");
+        } break;
+    }
+}
+
+static inline void
+arm64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, Arm64Register src_reg, u64 size)
+{
+    assert(!(dst_stack_offset & 7));
+    assert(dst_stack_offset <= 0x7FFF);
+
+    switch (size)
+    {
+        case 1:
+        {
+            // STRB (immediate)
+            u32 inst = 0x39000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 2:
+        {
+            // STRH (immediate)
+            u32 inst = 0x79000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            // STR (immediate)
+            u32 inst = 0xB9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            // STR (immediate)
+            u32 inst = 0xF9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        default:
+        {
+            assert(!"not allowed");
+        } break;
+    }
+}
+
+static inline void
 arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 src_stack_offset, u64 size)
 {
     assert(!(dst_stack_offset & 7));
@@ -136,7 +380,7 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
             string_builder_append_u32le(builder, inst);
 
             // STRB (immediate)
-            inst = 0x39000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0x39000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -147,7 +391,7 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
             string_builder_append_u32le(builder, inst);
 
             // STRH (immediate)
-            inst = 0x79000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0x79000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -158,7 +402,7 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
             string_builder_append_u32le(builder, inst);
 
             // STR (immediate)
-            inst = 0xB9000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0xB9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -169,7 +413,7 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
             string_builder_append_u32le(builder, inst);
 
             // STR (immediate)
-            inst = 0xF9000000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0xF9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -187,15 +431,21 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
     {
         case AST_KIND_LITERAL_BOOLEAN:
         {
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset += stack_size;
+
             arm64_move_immediate16(code, ARM64_R0, expr->_bool ? 1 : 0);
-            arm64_push_register(code, ARM64_R0);
-            parser->current_stack_offset += 16;
+            arm64_copy_from_register_to_stack(code, 0, ARM64_R0, datatype->size);
         } break;
 
         case AST_KIND_LITERAL_INTEGER:
         {
             Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
-            assert(datatype->size == 8);
 
             if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
                 (expr->_s64 >= 0))
@@ -214,8 +464,13 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
                 assert(!"not implemented");
             }
 
-            arm64_push_register(code, ARM64_R0);
-            parser->current_stack_offset += 16;
+            u64 stack_size = Align(datatype->size, 16);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset += stack_size;
+
+            arm64_copy_from_register_to_stack(code, 0, ARM64_R0, datatype->size);
         } break;
 
         case AST_KIND_IDENTIFIER:
@@ -235,6 +490,47 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
             parser->current_stack_offset += stack_size;
 
             arm64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+        } break;
+
+        case AST_KIND_EXPRESSION_BINOP_ADD:
+        case AST_KIND_EXPRESSION_BINOP_MINUS:
+        {
+            arm64_emit_expression(parser, code, expr->left_expr);
+            arm64_emit_expression(parser, code, expr->right_expr);
+
+            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+            u64 left_stack_size  = Align(left_datatype->size, 16);
+            u64 right_stack_size = Align(right_datatype->size, 16);
+            u64 total_stack_size = left_stack_size + right_stack_size;
+
+            assert(expr->type_id);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            arm64_copy_from_stack_to_register(code, ARM64_R1, 0, right_datatype->size);
+            arm64_copy_from_stack_to_register(code, ARM64_R0, right_stack_size, left_datatype->size);
+
+            // TODO: maybe sign extend arguments
+
+            assert(stack_size <= 0xFFFF);
+            assert(total_stack_size <= 0xFFFF);
+            arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) (total_stack_size - stack_size));
+            parser->current_stack_offset -= total_stack_size - stack_size;
+
+            if (expr->kind == AST_KIND_EXPRESSION_BINOP_ADD)
+            {
+                arm64_add_registers(code, ARM64_R0, ARM64_R1, datatype->size);
+            }
+            else
+            {
+                assert(expr->kind == AST_KIND_EXPRESSION_BINOP_MINUS);
+                arm64_subtract_registers(code, ARM64_R0, ARM64_R1, datatype->size);
+            }
+
+            arm64_copy_from_register_to_stack(code, 0, ARM64_R0, datatype->size);
         } break;
 
         default:
@@ -273,8 +569,9 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
                     // TODO: does the size match the expression?
                     arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
 
-                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, 16);
-                    parser->current_stack_offset -= 16;
+                    assert(stack_size <= 0xFFFF);
+                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+                    parser->current_stack_offset -= stack_size;
                 }
             } break;
 
@@ -284,13 +581,20 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
 
                 Ast *left = statement->left_expr;
 
+                u64 arguments_stack_size = 0;
+
+                For(argument, statement->children.first)
+                {
+                    arm64_emit_expression(parser, code, argument);
+
+                    Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
+
+                    u64 stack_size = datatype->size;
+                    arguments_stack_size += stack_size;
+                }
+
                 if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
                 {
-                    For(argument, statement->children.first)
-                    {
-                        arm64_emit_expression(parser, code, argument);
-                    }
-
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
@@ -304,14 +608,15 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
                         arm64_move_indirect_into_register(code, ARM64_R0, ARM64_SP, 0);
                         arm64_svc(code, 0x80);
                     }
-
-                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, 16);
-                    parser->current_stack_offset -= 16;
                 }
                 else
                 {
                     assert(!"not implemented");
                 }
+
+                assert(arguments_stack_size <= 0xFFFF);
+                arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) arguments_stack_size);
+                parser->current_stack_offset -= arguments_stack_size;
             } break;
 
             default:

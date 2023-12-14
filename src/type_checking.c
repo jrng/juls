@@ -1,4 +1,4 @@
-static void type_check_expression(Parser *parser, Ast *expr);
+static void type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id);
 
 static void
 resolve_type(Parser *parser, Ast *type_def)
@@ -7,7 +7,7 @@ resolve_type(Parser *parser, Ast *type_def)
     {
         case AST_KIND_QUERY_TYPE_OF:
         {
-            type_check_expression(parser, type_def->left_expr);
+            type_check_expression(parser, type_def->left_expr, 0);
             type_def->type_id = type_def->left_expr->type_id;
         } break;
 
@@ -36,7 +36,7 @@ resolve_type(Parser *parser, Ast *type_def)
 }
 
 static void
-type_check_expression(Parser *parser, Ast *expr)
+type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
 {
     switch (expr->kind)
     {
@@ -71,6 +71,37 @@ type_check_expression(Parser *parser, Ast *expr)
 
         case AST_KIND_LITERAL_INTEGER:
         {
+            if (preferred_type_id)
+            {
+                Datatype *datatype = get_datatype(&parser->datatypes, preferred_type_id);
+
+                assert(datatype->kind == DATATYPE_INTEGER);
+
+                if (datatype->flags & DATATYPE_FLAG_UNSIGNED)
+                {
+                    switch (datatype->size)
+                    {
+                        case 1: expr->type_id = parser->basetype_u8;  break;
+                        case 2: expr->type_id = parser->basetype_u16; break;
+                        case 4: expr->type_id = parser->basetype_u32; break;
+                        case 8: expr->type_id = parser->basetype_u64; break;
+                        default: assert(!"not allowed"); break;
+                    }
+                }
+                else
+                {
+                    switch (datatype->size)
+                    {
+                        case 1: expr->type_id = parser->basetype_s8;  break;
+                        case 2: expr->type_id = parser->basetype_s16; break;
+                        case 4: expr->type_id = parser->basetype_s32; break;
+                        case 8: expr->type_id = parser->basetype_s64; break;
+                        default: assert(!"not allowed"); break;
+                    }
+                }
+
+                // TODO: check if the value fits in the type
+            }
         } break;
 
         case AST_KIND_LITERAL_FLOAT:
@@ -81,11 +112,62 @@ type_check_expression(Parser *parser, Ast *expr)
         {
         } break;
 
+        case AST_KIND_EXPRESSION_BINOP_ADD:
+        case AST_KIND_EXPRESSION_BINOP_MINUS:
+        {
+            type_check_expression(parser, expr->left_expr, 0);
+            type_check_expression(parser, expr->right_expr, 0);
+
+            Datatype *left_type = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+            Datatype *right_type = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+            u64 max_size = left_type->size;
+
+            if (right_type->size > max_size)
+            {
+                max_size = right_type->size;
+            }
+
+            DatatypeId type_id = 0;
+
+            if ((left_type->flags & DATATYPE_FLAG_UNSIGNED) && (right_type->flags & DATATYPE_FLAG_UNSIGNED))
+            {
+                switch (max_size)
+                {
+                    case 1: type_id = parser->basetype_u8;  break;
+                    case 2: type_id = parser->basetype_u16; break;
+                    case 4: type_id = parser->basetype_u32; break;
+                    case 8: type_id = parser->basetype_u64; break;
+                    default: assert(!"not allowed"); break;
+                }
+            }
+            else if (!(left_type->flags & DATATYPE_FLAG_UNSIGNED) && !(right_type->flags & DATATYPE_FLAG_UNSIGNED))
+            {
+                switch (max_size)
+                {
+                    case 1: type_id = parser->basetype_s8;  break;
+                    case 2: type_id = parser->basetype_s16; break;
+                    case 4: type_id = parser->basetype_s32; break;
+                    case 8: type_id = parser->basetype_s64; break;
+                    default: assert(!"not allowed"); break;
+                }
+            }
+            else
+            {
+                // TODO: error
+                fprintf(stderr, "error: not compatible integer types\n");
+            }
+
+            expr->type_id = type_id;
+        } break;
+
         default:
         {
             assert(!"expression not supported");
         } break;
     }
+
+    assert(expr->type_id);
 }
 
 static void
@@ -95,22 +177,25 @@ type_check_statement(Parser *parser, Ast *statement)
     {
         case AST_KIND_VARIABLE_DECLARATION:
         {
-            if (statement->right_expr)
-            {
-                type_check_expression(parser, statement->right_expr);
-            }
-
             if (statement->type_def)
             {
                 resolve_type(parser, statement->type_def);
 
                 statement->type_id = statement->type_def->type_id;
 
+                if (statement->right_expr)
+                {
+                    type_check_expression(parser, statement->right_expr, statement->type_id);
+                }
+
                 // TODO: declaration type and expression type compatible?
             }
             else
             {
                 assert(statement->right_expr);
+
+                type_check_expression(parser, statement->right_expr, 0);
+
                 assert(statement->right_expr->type_id);
 
                 statement->type_id = statement->right_expr->type_id;
@@ -121,7 +206,7 @@ type_check_statement(Parser *parser, Ast *statement)
         {
             For(argument, statement->children.first)
             {
-                type_check_expression(parser, argument);
+                type_check_expression(parser, argument, 0);
             }
         } break;
 

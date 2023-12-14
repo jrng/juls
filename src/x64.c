@@ -111,6 +111,264 @@ x64_subtract_immediate32_unsigned_from_register(StringBuilder *builder, X64Regis
 }
 
 static inline void
+x64_add_registers(StringBuilder *builder, X64Register dst_reg, X64Register src_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            string_builder_append_u8(builder, 0x00);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 2:
+        {
+            string_builder_append_u8(builder, 0x66);
+            string_builder_append_u8(builder, 0x01);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 4:
+        {
+            string_builder_append_u8(builder, 0x01);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 8:
+        {
+            string_builder_append_u8(builder, REX_W);
+            string_builder_append_u8(builder, 0x01);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+    }
+}
+
+static inline void
+x64_subtract_registers(StringBuilder *builder, X64Register dst_reg, X64Register src_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            string_builder_append_u8(builder, 0x28);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 2:
+        {
+            string_builder_append_u8(builder, 0x66);
+            string_builder_append_u8(builder, 0x29);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 4:
+        {
+            string_builder_append_u8(builder, 0x29);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+
+        case 8:
+        {
+            string_builder_append_u8(builder, REX_W);
+            string_builder_append_u8(builder, 0x29);
+            string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+        } break;
+    }
+}
+
+static inline void
+x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64 src_stack_offset, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x8A);
+                string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x8A);
+                string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+        } break;
+
+        case 2:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+        } break;
+
+        case 4:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+        } break;
+
+        case 8:
+        {
+            if (src_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) src_stack_offset);
+            }
+            else
+            {
+                assert(src_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x8B);
+                string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) src_stack_offset);
+            }
+        } break;
+
+        default:
+        {
+            assert(!"not allowed");
+        } break;
+    }
+}
+
+static inline void
+x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X64Register src_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x88);
+                string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x88);
+                string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        case 2:
+        {
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x66);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        case 4:
+        {
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        case 8:
+        {
+            if (dst_stack_offset <= 0xFF)
+            {
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u8(builder, (u8) dst_stack_offset);
+            }
+            else
+            {
+                assert(dst_stack_offset <= 0xFFFFFFFF);
+
+                string_builder_append_u8(builder, REX_W);
+                string_builder_append_u8(builder, 0x89);
+                string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
+                string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+                string_builder_append_u32le(builder, (u32) dst_stack_offset);
+            }
+        } break;
+
+        default:
+        {
+            assert(!"not allowed");
+        } break;
+    }
+}
+
+static inline void
 x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 src_stack_offset, u64 size)
 {
     switch (size)
@@ -285,15 +543,21 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
     {
         case AST_KIND_LITERAL_BOOLEAN:
         {
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = datatype->size;
+
+            assert(stack_size <= 0xFFFFFFFF);
+            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            parser->current_stack_offset += stack_size;
+
             x64_move_immediate32_unsigned_into_register(code, X64_RAX, expr->_bool ? 1 : 0);
-            x64_push_register(code, X64_RAX);
-            parser->current_stack_offset += 8;
+            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_LITERAL_INTEGER:
         {
             Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
-            assert(datatype->size == 8);
 
             if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
                 (expr->_s64 >= 0))
@@ -319,8 +583,13 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
                 }
             }
 
-            x64_push_register(code, X64_RAX);
-            parser->current_stack_offset += 8;
+            u64 stack_size = datatype->size;
+
+            assert(stack_size <= 0xFFFFFFFF);
+            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            parser->current_stack_offset += stack_size;
+
+            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_IDENTIFIER:
@@ -340,6 +609,47 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr)
             parser->current_stack_offset += stack_size;
 
             x64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+        } break;
+
+        case AST_KIND_EXPRESSION_BINOP_ADD:
+        case AST_KIND_EXPRESSION_BINOP_MINUS:
+        {
+            x64_emit_expression(parser, code, expr->left_expr);
+            x64_emit_expression(parser, code, expr->right_expr);
+
+            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+            u64 left_stack_size = left_datatype->size;
+            u64 right_stack_size = right_datatype->size;
+            u64 total_stack_size = left_stack_size + right_stack_size;
+
+            assert(expr->type_id);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = datatype->size;
+
+            x64_copy_from_stack_to_register(code, X64_RBX, 0, right_datatype->size);
+            x64_copy_from_stack_to_register(code, X64_RAX, right_stack_size, left_datatype->size);
+
+            // TODO: maybe sign extend arguments
+
+            assert(stack_size <= 0xFFFFFFFF);
+            assert(total_stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) (total_stack_size - stack_size));
+            parser->current_stack_offset -= total_stack_size - stack_size;
+
+            if (expr->kind == AST_KIND_EXPRESSION_BINOP_ADD)
+            {
+                x64_add_registers(code, X64_RAX, X64_RBX, datatype->size);
+            }
+            else
+            {
+                assert(expr->kind == AST_KIND_EXPRESSION_BINOP_MINUS);
+                x64_subtract_registers(code, X64_RAX, X64_RBX, datatype->size);
+            }
+
+            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
         } break;
 
         default:
@@ -378,8 +688,9 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
                     // TODO: does the size match the expression?
                     x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
 
-                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, 8);
-                    parser->current_stack_offset -= 8;
+                    assert(stack_size <= 0xFFFFFFFF);
+                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+                    parser->current_stack_offset -= stack_size;
                 }
             } break;
 
@@ -389,12 +700,20 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 
                 Ast *left = statement->left_expr;
 
+                u64 arguments_stack_size = 0;
+
+                For(argument, statement->children.first)
+                {
+                    x64_emit_expression(parser, code, argument);
+
+                    Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
+
+                    u64 stack_size = datatype->size;
+                    arguments_stack_size += stack_size;
+                }
+
                 if ((left->kind == AST_KIND_IDENTIFIER) && strings_are_equal(left->name, S("exit")))
                 {
-                    For(argument, statement->children.first)
-                    {
-                        x64_emit_expression(parser, code, argument);
-                    }
 
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
@@ -409,14 +728,15 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
                         x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
                         x64_syscall(code);
                     }
-
-                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, 8);
-                    parser->current_stack_offset -= 8;
                 }
                 else
                 {
                     assert(!"not implemented");
                 }
+
+                assert(arguments_stack_size <= 0xFFFFFFFF);
+                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) arguments_stack_size);
+                parser->current_stack_offset -= arguments_stack_size;
             } break;
 
             default:

@@ -3,9 +3,13 @@ main :: ()
     a := false;
     // b := 3.14;
     // c := "FizzBuzz";
-    d : s16 = 42;
+    d : s8 = 42;
     e : u32 = 123;
-    f : u64 = 23;
+    f : s8 = 23;
 
-    exit(f);
+    g : s8 = 68;
+    h : s8 = 70;
+
+    // exit(d + f + 4);
+    exit(g - h);
 }
