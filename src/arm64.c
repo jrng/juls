@@ -287,28 +287,28 @@ arm64_copy_from_stack_to_register(StringBuilder *builder, Arm64Register dst_reg,
         case 1:
         {
             // LDRB (immediate)
-            u32 inst = 0x39400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x39400000 | (((u32) src_stack_offset & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | dst_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 2:
         {
             // LDRH (immediate)
-            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 1) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | dst_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 4:
         {
             // LDR (immediate)
-            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 2) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | dst_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 8:
         {
             // LDR (immediate)
-            u32 inst = 0xF9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0xF9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | dst_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -330,28 +330,28 @@ arm64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, 
         case 1:
         {
             // STRB (immediate)
-            u32 inst = 0x39000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x39000000 | (((u32) dst_stack_offset & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | src_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 2:
         {
             // STRH (immediate)
-            u32 inst = 0x79000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x79000000 | (((u32) (dst_stack_offset >> 1) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | src_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 4:
         {
             // STR (immediate)
-            u32 inst = 0xB9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0xB9000000 | (((u32) (dst_stack_offset >> 2) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | src_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 8:
         {
             // STR (immediate)
-            u32 inst = 0xF9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0xF9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | src_reg;
             string_builder_append_u32le(builder, inst);
         } break;
 
@@ -376,33 +376,33 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
         case 1:
         {
             // LDRB (immediate)
-            u32 inst = 0x39400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x39400000 | (((u32) src_stack_offset & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
 
             // STRB (immediate)
-            inst = 0x39000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0x39000000 | (((u32) dst_stack_offset & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 2:
         {
             // LDRH (immediate)
-            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0x79400000 | (((u32) (src_stack_offset >> 1) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
 
             // STRH (immediate)
-            inst = 0x79000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0x79000000 | (((u32) (dst_stack_offset >> 1) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 
         case 4:
         {
             // LDR (immediate)
-            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            u32 inst = 0xB9400000 | (((u32) (src_stack_offset >> 2) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
 
             // STR (immediate)
-            inst = 0xB9000000 | (((u32) (dst_stack_offset >> 3) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            inst = 0xB9000000 | (((u32) (dst_stack_offset >> 2) & 0xFFF) << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(builder, inst);
         } break;
 

@@ -3,6 +3,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#ifndef MAP_ANONYMOUS
+#  define MAP_ANONYMOUS 0x20
+#endif
+
 static inline void *
 allocate(u64 size)
 {
