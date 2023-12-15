@@ -424,6 +424,85 @@ arm64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64
     }
 }
 
+static inline void
+arm64_compare_registers(StringBuilder *builder, Arm64Register a_reg, Arm64Register b_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x6B208000 | ((u32) b_reg << 16) | ((u32) a_reg << 5) | a_reg;
+            }
+            else
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x6B200000 | ((u32) b_reg << 16) | ((u32) a_reg << 5) | a_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 2:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x6B208000 | ((u32) b_reg << 16) | (0x1 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+            else
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x6B200000 | ((u32) b_reg << 16) | (0x1 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 4:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x64208000 | ((u32) b_reg << 16) | (0x2 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+            else
+            {
+                // SUBS/CMP (extended register)
+                inst = 0x6B200000 | ((u32) b_reg << 16) | (0x2 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+
+        case 8:
+        {
+            u32 inst;
+
+            if (false /* is_signed */)
+            {
+                // SUBS/CMP (extended register)
+                inst = 0xEB208000 | ((u32) b_reg << 16) | (0x3 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+            else
+            {
+                // SUBS/CMP (extended register)
+                inst = 0xEB200000 | ((u32) b_reg << 16) | (0x3 << 13) | ((u32) a_reg << 5) | a_reg;
+            }
+
+            string_builder_append_u32le(builder, inst);
+        } break;
+    }
+}
+
 static void
 arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform target_platform)
 {
@@ -490,6 +569,119 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatfo
             parser->current_stack_offset += stack_size;
 
             arm64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+        } break;
+
+        case AST_KIND_EXPRESSION_EQUAL:
+        case AST_KIND_EXPRESSION_NOT_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_LESS:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER:
+        case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
+        {
+            arm64_emit_expression(parser, code, expr->left_expr, target_platform);
+            arm64_emit_expression(parser, code, expr->right_expr, target_platform);
+
+            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+            u64 max_datatype_size = left_datatype->size;
+
+            if (right_datatype->size > max_datatype_size)
+            {
+                max_datatype_size = right_datatype->size;
+            }
+
+            u64 left_stack_size = Align(left_datatype->size, 16);
+            u64 right_stack_size = Align(right_datatype->size, 16);
+            u64 total_stack_size = left_stack_size + right_stack_size;
+
+            assert(expr->type_id == parser->basetype_bool);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            arm64_copy_from_stack_to_register(code, ARM64_R1, 0, right_datatype->size);
+            arm64_copy_from_stack_to_register(code, ARM64_R0, right_stack_size, left_datatype->size);
+
+            // TODO: maybe sign extend arguments
+
+            assert(stack_size <= 0xFFFF);
+            assert(total_stack_size <= 0xFFFF);
+            arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) (total_stack_size - stack_size));
+            parser->current_stack_offset -= total_stack_size - stack_size;
+
+            arm64_compare_registers(code, ARM64_R0, ARM64_R1, max_datatype_size);
+
+            u32 cond = 0;
+
+            bool is_signed = true; // TODO:
+
+            if (is_signed)
+            {
+                if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
+                {
+                    cond = 0x0;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
+                {
+                    cond = 0x1;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
+                {
+                    cond = 0xB;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
+                {
+                    cond = 0xC;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
+                {
+                    cond = 0xD;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
+                {
+                    cond = 0xA;
+                }
+            }
+            else
+            {
+                if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
+                {
+                    cond = 0x0;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
+                {
+                    cond = 0x1;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
+                {
+                    cond = 0x4;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
+                {
+                    cond = 0x8;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
+                {
+                    cond = 0x9;
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
+                {
+                    cond = 0x5;
+                }
+            }
+
+            cond ^= 0x1;
+
+            // CSET/CSINC
+            u32 inst = 0x9A9F07E0 | ((cond & 0xF) << 12) | ARM64_R0;
+            string_builder_append_u32le(code, inst);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset += stack_size;
+
+            arm64_copy_from_register_to_stack(code, 0, ARM64_R0, datatype->size);
         } break;
 
         case AST_KIND_EXPRESSION_BINOP_ADD:
@@ -614,6 +806,113 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatfo
 }
 
 static void
+arm64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlatform target_platform,
+                     Datatype *return_type, u64 return_type_stack_size)
+{
+    switch (statement->kind)
+    {
+        case AST_KIND_VARIABLE_DECLARATION:
+        {
+            Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset += stack_size;
+            statement->stack_offset = parser->current_stack_offset;
+
+            if (statement->right_expr)
+            {
+                arm64_emit_expression(parser, code, statement->right_expr, target_platform);
+
+                // TODO: does the size match the expression?
+                arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+
+                assert(stack_size <= 0xFFFF);
+                arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+                parser->current_stack_offset -= stack_size;
+            }
+        } break;
+
+        case AST_KIND_IF:
+        {
+            arm64_emit_expression(parser, code, statement->left_expr, target_platform);
+
+            assert(statement->left_expr->type_id == parser->basetype_bool);
+            Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
+
+            u64 stack_size = Align(datatype->size, 16);
+
+            arm64_copy_from_stack_to_register(code, ARM64_R0, 0, datatype->size);
+
+            assert(stack_size <= 0xFFFF);
+            arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
+            parser->current_stack_offset -= stack_size;
+
+            // SUBS (immediate)
+            u32 inst = 0xF1000000 | ((u32) ARM64_R0 << 5) | ARM64_R0;
+            string_builder_append_u32le(code, inst);
+
+            // JZ
+            s64 else_offset = string_builder_get_size(code);
+            u32 *else_patch = string_builder_append_size(code, 4);
+
+            Ast *if_code = statement->children.first;
+            Ast *else_code = 0;
+
+            if (statement->children.first != statement->children.last)
+            {
+                else_code = statement->children.last;
+            }
+
+            arm64_emit_statement(parser, code, if_code, target_platform, return_type, return_type_stack_size);
+
+            s64 end_offset = string_builder_get_size(code);
+            u32 *end_patch = 0;
+
+            if (else_code)
+            {
+                // B
+                end_patch = string_builder_append_size(code, 4);
+            }
+
+            s64 else_target = string_builder_get_size(code);
+            *else_patch = 0x54000000 | ((((u32) (else_target - else_offset) >> 2) & 0x7FFFF) << 5);
+
+            if (else_code)
+            {
+                arm64_emit_statement(parser, code, else_code, target_platform, return_type, return_type_stack_size);
+
+                s64 end_target = string_builder_get_size(code);
+                *end_patch = 0x14000000 | (((u32) (end_target - end_offset) >> 2) & 0x3FFFFFF);
+            }
+        } break;
+
+        case AST_KIND_RETURN:
+        {
+            assert(statement->left_expr);
+
+            arm64_emit_expression(parser, code, statement->left_expr, target_platform);
+
+            arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
+
+            assert(return_type_stack_size <= 0xFFFF);
+            arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
+            parser->current_stack_offset -= return_type_stack_size;
+
+            arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
+            arm64_ret(code);
+        } break;
+
+        default:
+        {
+            arm64_emit_expression(parser, code, statement, target_platform);
+        } break;
+    }
+}
+
+static void
 arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
@@ -641,60 +940,12 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
 
     For(statement, func->children.first)
     {
-        switch (statement->kind)
-        {
-            case AST_KIND_VARIABLE_DECLARATION:
-            {
-                Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
-
-                u64 stack_size = Align(datatype->size, 16);
-
-                assert(stack_size <= 0xFFFF);
-                arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
-                parser->current_stack_offset += stack_size;
-                statement->stack_offset = parser->current_stack_offset;
-
-                if (statement->right_expr)
-                {
-                    arm64_emit_expression(parser, code, statement->right_expr, target_platform);
-
-                    // TODO: does the size match the expression?
-                    arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
-
-                    assert(stack_size <= 0xFFFF);
-                    arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
-                    parser->current_stack_offset -= stack_size;
-                }
-            } break;
-
-            case AST_KIND_RETURN:
-            {
-                assert(statement->left_expr);
-
-                arm64_emit_expression(parser, code, statement->left_expr, target_platform);
-
-                arm64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
-
-                assert(return_type_stack_size <= 0xFFFF);
-                arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
-                parser->current_stack_offset -= return_type_stack_size;
-
-                arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
-                parser->current_stack_offset -= 16;
-                arm64_ret(code);
-            } break;
-
-            default:
-            {
-                arm64_emit_expression(parser, code, statement, target_platform);
-            } break;
-        }
+        arm64_emit_statement(parser, code, statement, target_platform, return_type, return_type_stack_size);
     }
 
     if (!func->type_def)
     {
         arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
-        parser->current_stack_offset -= 16;
         arm64_ret(code);
     }
 }

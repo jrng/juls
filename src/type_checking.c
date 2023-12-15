@@ -112,6 +112,29 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
         {
         } break;
 
+        case AST_KIND_EXPRESSION_EQUAL:
+        case AST_KIND_EXPRESSION_NOT_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_LESS:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER:
+        case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
+        {
+            if (expr->left_expr->kind == AST_KIND_LITERAL_INTEGER)
+            {
+                type_check_expression(parser, expr->right_expr, 0);
+                type_check_expression(parser, expr->left_expr, expr->right_expr->type_id);
+            }
+            else
+            {
+                type_check_expression(parser, expr->left_expr, 0);
+                type_check_expression(parser, expr->right_expr, expr->left_expr->type_id);
+            }
+
+            // TODO: are types comparable
+
+            expr->type_id = parser->basetype_bool;
+        } break;
+
         case AST_KIND_EXPRESSION_BINOP_ADD:
         case AST_KIND_EXPRESSION_BINOP_MINUS:
         {
@@ -249,6 +272,22 @@ type_check_statement(Parser *parser, Ast *statement)
 
         case AST_KIND_IF:
         {
+            type_check_expression(parser, statement->left_expr, 0);
+
+            if (statement->left_expr->type_id != parser->basetype_bool)
+            {
+                fprintf(stderr, "error: expression in if statement has to be of type bool\n");
+            }
+
+            assert(statement->children.first && statement->children.last);
+            assert((statement->children.first == statement->children.last) ||
+                   ((statement->children.first->next == statement->children.last) &&
+                    (statement->children.first == statement->children.last->prev)));
+
+            For(stmt, statement->children.first)
+            {
+                type_check_statement(parser, stmt);
+            }
         } break;
 
         case AST_KIND_RETURN:

@@ -269,6 +269,38 @@ print_ast(Ast *ast, s32 indent)
             }
         } break;
 
+        case AST_KIND_EXPRESSION_COMPARE_LESS:
+        {
+            fprintf(stderr, "%*sCompareLess\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_EXPRESSION_COMPARE_GREATER:
+        {
+            fprintf(stderr, "%*sCompareGreater\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
+        {
+            fprintf(stderr, "%*sCompareLessEqual\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
+        {
+            fprintf(stderr, "%*sCompareGreaterEqual\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
         case AST_KIND_EXPRESSION_BINOP_ADD:
         {
             fprintf(stderr, "%*sBinopAdd\n", indent, "");

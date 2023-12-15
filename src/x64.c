@@ -536,6 +536,56 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
     }
 }
 
+static inline void
+x64_compare_registers(StringBuilder *builder, X64Register a_reg, X64Register b_reg, u64 size)
+{
+    switch (size)
+    {
+        case 1:
+        {
+            string_builder_append_u8(builder, 0x38);
+            string_builder_append_u8(builder, ModRM(3, b_reg, a_reg));
+        } break;
+
+        case 2:
+        {
+            string_builder_append_u8(builder, 0x66);
+            string_builder_append_u8(builder, 0x39);
+            string_builder_append_u8(builder, ModRM(3, b_reg, a_reg));
+        } break;
+
+        case 4:
+        {
+            string_builder_append_u8(builder, 0x39);
+            string_builder_append_u8(builder, ModRM(3, b_reg, a_reg));
+        } break;
+
+        case 8:
+        {
+            string_builder_append_u8(builder, REX_W);
+            string_builder_append_u8(builder, 0x39);
+            string_builder_append_u8(builder, ModRM(3, b_reg, a_reg));
+        } break;
+    }
+}
+
+static inline void
+x64_setcc(StringBuilder *builder, u8 compare_func, u64 dst_stack_offset)
+{
+    string_builder_append_u8(builder, 0x0F);
+    string_builder_append_u8(builder, compare_func);
+    string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
+    string_builder_append_u8(builder, SIB(0, X64_RSP, X64_RSP));
+    string_builder_append_u32le(builder, (u32) dst_stack_offset);
+}
+
+static inline void
+x64_compare_al_to_zero(StringBuilder *builder, X64Register reg)
+{
+    string_builder_append_u8(builder, 0x3C);
+    string_builder_append_u8(builder, 0x00);
+}
+
 static void
 x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform target_platform)
 {
@@ -609,6 +659,105 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             parser->current_stack_offset += stack_size;
 
             x64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+        } break;
+
+        case AST_KIND_EXPRESSION_EQUAL:
+        case AST_KIND_EXPRESSION_NOT_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_LESS:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER:
+        case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
+        case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
+        {
+            x64_emit_expression(parser, code, expr->left_expr, target_platform);
+            x64_emit_expression(parser, code, expr->right_expr, target_platform);
+
+            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+            u64 max_datatype_size = left_datatype->size;
+
+            if (right_datatype->size > max_datatype_size)
+            {
+                max_datatype_size = right_datatype->size;
+            }
+
+            u64 left_stack_size = left_datatype->size;
+            u64 right_stack_size = right_datatype->size;
+            u64 total_stack_size = left_stack_size + right_stack_size;
+
+            assert(expr->type_id == parser->basetype_bool);
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+
+            u64 stack_size = datatype->size;
+
+            x64_copy_from_stack_to_register(code, X64_RBX, 0, right_datatype->size);
+            x64_copy_from_stack_to_register(code, X64_RAX, right_stack_size, left_datatype->size);
+
+            // TODO: maybe sign extend arguments
+
+            assert(stack_size <= 0xFFFFFFFF);
+            assert(total_stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) (total_stack_size - stack_size));
+            parser->current_stack_offset -= total_stack_size - stack_size;
+
+            x64_compare_registers(code, X64_RAX, X64_RBX, max_datatype_size);
+
+            bool is_signed = true; // TODO:
+
+            if (is_signed)
+            {
+                if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
+                {
+                    x64_setcc(code, 0x94, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
+                {
+                    x64_setcc(code, 0x95, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
+                {
+                    x64_setcc(code, 0x9C, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
+                {
+                    x64_setcc(code, 0x9F, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
+                {
+                    x64_setcc(code, 0x9E, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
+                {
+                    x64_setcc(code, 0x9D, 0);
+                }
+            }
+            else
+            {
+                if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
+                {
+                    x64_setcc(code, 0x94, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
+                {
+                    x64_setcc(code, 0x95, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
+                {
+                    x64_setcc(code, 0x92, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
+                {
+                    x64_setcc(code, 0x97, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
+                {
+                    x64_setcc(code, 0x96, 0);
+                }
+                else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
+                {
+                    x64_setcc(code, 0x93, 0);
+                }
+            }
         } break;
 
         case AST_KIND_EXPRESSION_BINOP_ADD:
@@ -734,6 +883,114 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
 }
 
 static void
+x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlatform target_platform,
+                   Datatype *return_type, u64 return_type_stack_size)
+{
+    switch (statement->kind)
+    {
+        case AST_KIND_VARIABLE_DECLARATION:
+        {
+            Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+
+            u64 stack_size = datatype->size;
+
+            assert(stack_size <= 0xFFFFFFFF);
+            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            parser->current_stack_offset += stack_size;
+            statement->stack_offset = parser->current_stack_offset;
+
+            if (statement->right_expr)
+            {
+                x64_emit_expression(parser, code, statement->right_expr, target_platform);
+
+                // TODO: does the size match the expression?
+                x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+
+                assert(stack_size <= 0xFFFFFFFF);
+                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+                parser->current_stack_offset -= stack_size;
+            }
+        } break;
+
+        case AST_KIND_IF:
+        {
+            x64_emit_expression(parser, code, statement->left_expr, target_platform);
+
+            assert(statement->left_expr->type_id == parser->basetype_bool);
+            Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
+
+            u64 stack_size = datatype->size;
+
+            x64_copy_from_stack_to_register(code, X64_RAX, 0, datatype->size);
+
+            assert(stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+            parser->current_stack_offset -= stack_size;
+
+            x64_compare_al_to_zero(code, X64_RAX);
+
+            // JE
+            string_builder_append_u8(code, 0x0F);
+            string_builder_append_u8(code, 0x84);
+            s32 *else_patch = string_builder_append_size(code, 4);
+            s64 else_offset = string_builder_get_size(code);
+
+            Ast *if_code = statement->children.first;
+            Ast *else_code = 0;
+
+            if (statement->children.first != statement->children.last)
+            {
+                else_code = statement->children.last;
+            }
+
+            x64_emit_statement(parser, code, if_code, target_platform, return_type, return_type_stack_size);
+
+            s32 *end_patch = 0;
+
+            if (else_code)
+            {
+                // JMP
+                string_builder_append_u8(code, 0xE9);
+                end_patch = string_builder_append_size(code, 4);
+            }
+
+            s64 else_target = string_builder_get_size(code);
+            *else_patch = (s32) (else_target - else_offset);
+
+            s64 end_offset = else_target;
+
+            if (else_code)
+            {
+                x64_emit_statement(parser, code, else_code, target_platform, return_type, return_type_stack_size);
+
+                s64 end_target = string_builder_get_size(code);
+                *end_patch = (s32) (end_target - end_offset);
+            }
+        } break;
+
+        case AST_KIND_RETURN:
+        {
+            assert(statement->left_expr);
+
+            x64_emit_expression(parser, code, statement->left_expr, target_platform);
+
+            x64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
+
+            assert(return_type_stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) return_type_stack_size);
+            parser->current_stack_offset -= return_type_stack_size;
+
+            x64_ret(code);
+        } break;
+
+        default:
+        {
+            x64_emit_expression(parser, code, statement, target_platform);
+        } break;
+    }
+}
+
+static void
 x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
@@ -761,59 +1018,12 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 
     For(statement, func->children.first)
     {
-        switch (statement->kind)
-        {
-            case AST_KIND_VARIABLE_DECLARATION:
-            {
-                Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
-
-                u64 stack_size = datatype->size;
-
-                assert(stack_size <= 0xFFFFFFFF);
-                x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
-                parser->current_stack_offset += stack_size;
-                statement->stack_offset = parser->current_stack_offset;
-
-                if (statement->right_expr)
-                {
-                    x64_emit_expression(parser, code, statement->right_expr, target_platform);
-
-                    // TODO: does the size match the expression?
-                    x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
-
-                    assert(stack_size <= 0xFFFFFFFF);
-                    x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
-                    parser->current_stack_offset -= stack_size;
-                }
-            } break;
-
-            case AST_KIND_RETURN:
-            {
-                assert(statement->left_expr);
-
-                x64_emit_expression(parser, code, statement->left_expr, target_platform);
-
-                x64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
-
-                assert(return_type_stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) return_type_stack_size);
-                parser->current_stack_offset -= return_type_stack_size;
-
-                x64_ret(code);
-                parser->current_stack_offset -= 8;
-            } break;
-
-            default:
-            {
-                x64_emit_expression(parser, code, statement, target_platform);
-            } break;
-        }
+        x64_emit_statement(parser, code, statement, target_platform, return_type, return_type_stack_size);
     }
 
     if (!func->type_def)
     {
         x64_ret(code);
-        parser->current_stack_offset -= 8;
     }
 }
 

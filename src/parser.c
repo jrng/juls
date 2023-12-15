@@ -696,8 +696,12 @@ parse_statement(Parser *parser)
 
             expect_token(parser, ')');
 
-            // TODO: store somewhere
-            parse_statement(parser);
+            Ast *statement = parse_statement(parser);
+
+            if (!statement) return 0;
+
+            ast_list_append(&ast->children, statement);
+            statement->parent = ast;
         } break;
 
         case TOKEN_KEYWORD_FOR:
