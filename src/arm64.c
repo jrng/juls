@@ -677,10 +677,6 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatfo
             u32 inst = 0x9A9F07E0 | ((cond & 0xF) << 12) | ARM64_R0;
             string_builder_append_u32le(code, inst);
 
-            assert(stack_size <= 0xFFFF);
-            arm64_subtract_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
-
             arm64_copy_from_register_to_stack(code, 0, ARM64_R0, datatype->size);
         } break;
 
