@@ -36,3 +36,8 @@ is planned.
 ### ELF
 
 - Executable and Linking Format (ELF) Specification, Version 1.2: [https://refspecs.linuxbase.org/elf/elf.pdf](https://refspecs.linuxbase.org/elf/elf.pdf)
+
+### Mach-O
+
+- OS X ABI Mach-O File Format Reference: [https://github.com/aidansteele/osx-abi-macho-file-format-reference](https://github.com/aidansteele/osx-abi-macho-file-format-reference)
+- Mach-O linker in Zig: linking in the era of Apple Silicon: [https://archive.fosdem.org/2021/schedule/event/zig_macho/](https://archive.fosdem.org/2021/schedule/event/zig_macho/)
