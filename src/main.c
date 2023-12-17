@@ -601,7 +601,7 @@ int main(s32 argument_count, char **arguments)
     }
     else if (target_platform == JulsPlatformMacOs)
     {
-        generate_macho(&builder, code, target_architecture);
+        generate_macho(&builder, code, symbol_table, target_architecture);
     }
 
     File *output_file = create_file(&default_allocator, output_filename,
