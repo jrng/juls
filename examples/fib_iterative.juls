@@ -1,8 +1,16 @@
 fib :: (n: u64) -> u64
 {
-    if (n <= 1) return n;
+    a := 0;
+    b := 1;
 
-    return fib(n - 2) + fib(n - 1);
+    for (i := 0; i < n; i += 1)
+    {
+        c := a + b;
+        a = b;
+        b = c;
+    }
+
+    return a;
 }
 
 main :: ()
