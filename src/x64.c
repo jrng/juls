@@ -899,6 +899,8 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
             parser->current_stack_offset += stack_size;
             statement->stack_offset = parser->current_stack_offset;
 
+            parser->stack_allocated[parser->stack_allocated_index] += stack_size;
+
             if (statement->right_expr)
             {
                 x64_emit_expression(parser, code, statement->right_expr, target_platform);
@@ -980,6 +982,17 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
             x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) return_type_stack_size);
             parser->current_stack_offset -= return_type_stack_size;
 
+            u64 stack_allocated = 0;
+
+            while (parser->stack_allocated_index >= 0)
+            {
+                stack_allocated += parser->stack_allocated[parser->stack_allocated_index];
+                pop_scope(parser);
+            }
+
+            assert(stack_allocated <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+
             x64_ret(code);
         } break;
 
@@ -998,6 +1011,7 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
     func->address = string_builder_get_size(code);
 
     parser->current_stack_offset = 0;
+    parser->stack_allocated_index = -1;
 
     Datatype *return_type = get_datatype(&parser->datatypes, func->type_id);
     u64 return_type_stack_size = return_type->size;
@@ -1016,6 +1030,8 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
     // that's the call return address
     parser->current_stack_offset += 8;
 
+    push_scope(parser);
+
     For(statement, func->children.first)
     {
         x64_emit_statement(parser, code, statement, target_platform, return_type, return_type_stack_size);
@@ -1023,6 +1039,14 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 
     if (!func->type_def)
     {
+        assert(parser->stack_allocated_index == 0);
+
+        u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
+        pop_scope(parser);
+
+        assert(stack_allocated <= 0xFFFFFFFF);
+        x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+
         x64_ret(code);
     }
 }

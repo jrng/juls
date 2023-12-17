@@ -818,6 +818,8 @@ arm64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPl
             parser->current_stack_offset += stack_size;
             statement->stack_offset = parser->current_stack_offset;
 
+            parser->stack_allocated[parser->stack_allocated_index] += stack_size;
+
             if (statement->right_expr)
             {
                 arm64_emit_expression(parser, code, statement->right_expr, target_platform);
@@ -897,6 +899,17 @@ arm64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPl
             arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
             parser->current_stack_offset -= return_type_stack_size;
 
+            u64 stack_allocated = 0;
+
+            while (parser->stack_allocated_index >= 0)
+            {
+                stack_allocated += parser->stack_allocated[parser->stack_allocated_index];
+                pop_scope(parser);
+            }
+
+            assert(stack_allocated <= 0xFFFF);
+            arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_allocated);
+
             arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
             arm64_ret(code);
         } break;
@@ -916,6 +929,7 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
     func->address = string_builder_get_size(code);
 
     parser->current_stack_offset = 0;
+    parser->stack_allocated_index = -1;
 
     Datatype *return_type = get_datatype(&parser->datatypes, func->type_id);
     u64 return_type_stack_size = Align(return_type->size, 16);
@@ -934,6 +948,8 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
     arm64_store_register(code, ARM64_R30, ARM64_SP, -16);
     parser->current_stack_offset += 16;
 
+    push_scope(parser);
+
     For(statement, func->children.first)
     {
         arm64_emit_statement(parser, code, statement, target_platform, return_type, return_type_stack_size);
@@ -941,6 +957,14 @@ arm64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform
 
     if (!func->type_def)
     {
+        assert(parser->stack_allocated_index == 0);
+
+        u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
+        pop_scope(parser);
+
+        assert(stack_allocated <= 0xFFFF);
+        arm64_add_immediate12(code, ARM64_SP, ARM64_SP, (u16) stack_allocated);
+
         arm64_load_register(code, ARM64_R30, ARM64_SP, 16);
         arm64_ret(code);
     }

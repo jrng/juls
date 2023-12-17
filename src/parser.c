@@ -31,7 +31,24 @@ typedef struct
 
     // TODO: this is code generation
     u64 current_stack_offset;
+    u64 stack_allocated[64];
+    s32 stack_allocated_index;
 } Parser;
+
+static inline void
+push_scope(Parser *parser)
+{
+    assert((parser->stack_allocated_index + 1) < ArrayCount(parser->stack_allocated));
+    parser->stack_allocated_index += 1;
+    parser->stack_allocated[parser->stack_allocated_index] = 0;
+}
+
+static inline void
+pop_scope(Parser *parser)
+{
+    assert(parser->stack_allocated_index >= 0);
+    parser->stack_allocated_index -= 1;
+}
 
 static inline void
 advance_token(Parser *parser)

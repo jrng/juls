@@ -1,6 +1,7 @@
 test :: (a: s64) -> s64
 {
-    return a + a;
+    b := a + a;
+    return b;
 }
 
 main :: ()
