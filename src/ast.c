@@ -59,7 +59,17 @@ typedef enum
     AST_KIND_QUERY_TYPE_OF                      = 24,
     AST_KIND_FUNCTION_CALL                      = 25,
     AST_KIND_IF                                 = 26,
-    AST_KIND_RETURN                             = 27,
+    AST_KIND_FOR                                = 27,
+    AST_KIND_RETURN                             = 28,
+    AST_KIND_ASSIGN                             = 29,
+    AST_KIND_PLUS_ASSIGN                        = 30,
+    AST_KIND_MINUS_ASSIGN                       = 31,
+    AST_KIND_MUL_ASSIGN                         = 32,
+    AST_KIND_DIV_ASSIGN                         = 33,
+    AST_KIND_OR_ASSIGN                          = 34,
+    AST_KIND_AND_ASSIGN                         = 35,
+    AST_KIND_XOR_ASSIGN                         = 36,
+    AST_KIND_BLOCK                              = 37,
 } AstKind;
 
 typedef struct Ast Ast;
@@ -208,6 +218,13 @@ append_ast(AstBucketArray *array, AstKind ast_kind)
     node->kind = ast_kind;
 
     return node;
+}
+
+static inline void
+ast_set_decl(Ast *ast, Ast *decl)
+{
+    decl->parent = ast;
+    ast->decl = decl;
 }
 
 static inline void
@@ -394,6 +411,52 @@ print_ast(Ast *ast, s32 indent)
         {
             fprintf(stderr, "%*sReturn\n", indent, "");
             print_ast(ast->left_expr, indent + 2);
+        } break;
+
+        case AST_KIND_FOR:
+        {
+            fprintf(stderr, "%*sFor\n", indent, "");
+
+            fprintf(stderr, "%*s(\n", indent, "");
+
+            print_ast(ast->decl, indent + 2);
+            print_ast(ast->left_expr, indent + 2);
+            print_ast(ast->right_expr, indent + 2);
+
+            fprintf(stderr, "%*s)\n", indent, "");
+
+            fprintf(stderr, "%*s{\n", indent, "");
+
+            For(elem, ast->children.first)
+            {
+                print_ast(elem, indent + 2);
+            }
+
+            fprintf(stderr, "%*s}\n", indent, "");
+        } break;
+
+        case AST_KIND_ASSIGN:
+        {
+            fprintf(stderr, "%*sAssign '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_PLUS_ASSIGN:
+        {
+            fprintf(stderr, "%*sPlusAssign '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+            print_ast(ast->right_expr, indent + 2);
+        } break;
+
+        case AST_KIND_BLOCK:
+        {
+            fprintf(stderr, "%*s{\n", indent, "");
+
+            For(elem, ast->children.first)
+            {
+                print_ast(elem, indent + 2);
+            }
+
+            fprintf(stderr, "%*s}\n", indent, "");
         } break;
 
         default:

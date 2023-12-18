@@ -604,8 +604,90 @@ parse_logic_or(Parser *parser)
 static Ast *
 parse_assignment(Parser *parser)
 {
-    assert(!"not implemented");
-    return 0;
+    Ast *expr = 0;
+
+    expect_token(parser, TOKEN_IDENTIFIER);
+
+    switch (parser->current.type)
+    {
+        case TOKEN_PLUS_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_PLUS_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_PLUS_EQUAL);
+        } break;
+
+        case TOKEN_MINUS_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_MINUS_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_MINUS_EQUAL);
+        } break;
+
+        case TOKEN_MUL_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_MUL_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_MUL_EQUAL);
+        } break;
+
+        case TOKEN_DIV_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_DIV_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_DIV_EQUAL);
+        } break;
+
+        case TOKEN_OR_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_OR_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_OR_EQUAL);
+        } break;
+
+        case TOKEN_AND_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_AND_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_AND_EQUAL);
+        } break;
+
+        case TOKEN_XOR_EQUAL:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_XOR_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_XOR_EQUAL);
+        } break;
+
+        case TOKEN_ASSIGN:
+        {
+            expr = append_ast(&parser->ast_nodes, AST_KIND_ASSIGN);
+            expr->name = parser->previous.lexeme;
+
+            expect_token(parser, TOKEN_ASSIGN);
+        } break;
+
+        default:
+        {
+            fprintf(stderr, "error: expected an assignment operator after an identifier\n");
+        } break;
+    }
+
+    if (expr)
+    {
+        ast_set_right_expr(expr, parse_logic_or(parser));
+
+        if (!expr->right_expr) return 0;
+    }
+
+    return expr;
 }
 
 static inline void
@@ -628,7 +710,10 @@ parse_expression(Parser *parser)
 
         rollback_one_token(parser);
 
-        if (token_type == TOKEN_ASSIGN)
+        if ((token_type == TOKEN_ASSIGN) || (token_type == TOKEN_PLUS_EQUAL) ||
+            (token_type == TOKEN_MINUS_EQUAL) || (token_type == TOKEN_MUL_EQUAL) ||
+            (token_type == TOKEN_DIV_EQUAL) || (token_type == TOKEN_OR_EQUAL) ||
+            (token_type == TOKEN_AND_EQUAL) || (token_type == TOKEN_XOR_EQUAL))
         {
             ast = parse_assignment(parser);
         }
@@ -723,7 +808,30 @@ parse_statement(Parser *parser)
 
         case TOKEN_KEYWORD_FOR:
         {
-            assert(!"not implemented");
+            ast = append_ast(&parser->ast_nodes, AST_KIND_FOR);
+
+            expect_token(parser, TOKEN_KEYWORD_FOR);
+
+            expect_token(parser, '(');
+
+            ast_set_decl(ast, parse_variable_declaration(parser));
+
+            expect_token(parser, ';');
+
+            ast_set_left_expr(ast, parse_expression(parser));
+
+            expect_token(parser, ';');
+
+            ast_set_right_expr(ast, parse_expression(parser));
+
+            expect_token(parser, ')');
+
+            Ast *statement = parse_statement(parser);
+
+            if (!statement) return 0;
+
+            ast_list_append(&ast->children, statement);
+            statement->parent = ast;
         } break;
 
         case TOKEN_KEYWORD_WHILE:
@@ -744,7 +852,21 @@ parse_statement(Parser *parser)
 
         case '{':
         {
-            assert(!"not implemented");
+            ast = append_ast(&parser->ast_nodes, AST_KIND_BLOCK);
+
+            expect_token(parser, '{');
+
+            while (parser->current.type != '}')
+            {
+                Ast *statement = parse_statement(parser);
+
+                if (!statement) return 0;
+
+                ast_list_append(&ast->children, statement);
+                statement->parent = ast;
+            }
+
+            expect_token(parser, '}');
         } break;
 
         default:
