@@ -90,6 +90,7 @@ struct Ast
     Ast *parent;
 
     String name;
+    String source_location;
 
     Ast *decl;
     Ast *type_def;
@@ -185,7 +186,7 @@ ast_list_append(AstList *list, Ast *ast)
 }
 
 static Ast *
-append_ast(AstBucketArray *array, AstKind ast_kind)
+append_ast(AstBucketArray *array, AstKind ast_kind, String source_location)
 {
     if (!array->last_bucket || (array->last_bucket->count >= ArrayCount(array->last_bucket->nodes)))
     {
@@ -216,6 +217,7 @@ append_ast(AstBucketArray *array, AstKind ast_kind)
     }
 
     node->kind = ast_kind;
+    node->source_location = source_location;
 
     return node;
 }

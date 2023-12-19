@@ -69,6 +69,102 @@ match_token(Parser *parser, TokenType token_type)
     return false;
 }
 
+static void
+report_error_valist(String source, String location, const char *message, va_list args)
+{
+    s64 line_indices[3] = { 0, 0, 0 };
+
+    s64 line = 1;
+    s64 character = 1;
+    s64 index = 0;
+
+    s64 token_index = location.data - source.data;
+
+    while (index < token_index)
+    {
+        if (source.data[index] == '\n')
+        {
+            line_indices[0] = line_indices[1];
+            line_indices[1] = line_indices[2];
+            line_indices[2] = index + 1;
+            line += 1;
+            character = 0;
+        }
+
+        character += 1;
+        index += 1;
+    }
+
+    fprintf(stderr, "%" PRId64 ":%" PRId64 ": error: ", line, character);
+    vfprintf(stderr, message, args);
+    fprintf(stderr, "\n");
+
+    s64 lines_to_print = 3;
+
+    if (line < lines_to_print)
+    {
+        lines_to_print = line;
+    }
+
+    index = line_indices[3 - lines_to_print];
+
+    for (s64 i = 0; i < lines_to_print; i += 1)
+    {
+        int len = 0;
+        s64 start_index = index;
+
+        for (;;)
+        {
+            len += 1;
+
+            if (source.data[index] == '\n')
+            {
+                break;
+            }
+
+            index += 1;
+        }
+
+        index += 1;
+
+        fprintf(stderr, "  %.*s", len, source.data + start_index);
+    }
+
+    fprintf(stderr, "  ");
+
+    index = line_indices[2];
+
+    while (index < token_index)
+    {
+        if (source.data[index] == '\t')
+        {
+            fprintf(stderr, "\t");
+        }
+        else
+        {
+            fprintf(stderr, " ");
+        }
+
+        index += 1;
+    }
+
+    for (s64 i = 0; i < location.count; i += 1)
+    {
+        fprintf(stderr, "^");
+    }
+
+    fprintf(stderr, "\n");
+}
+
+static void
+report_error(String source, String location, const char *message, ...)
+{
+    va_list args;
+    va_start(args, message);
+    report_error_valist(source, location, message, args);
+    va_end(args);
+}
+
 static s64
 get_token_line(Lexer lexer, Token token)
 {
@@ -208,19 +304,21 @@ parse_type_definition(Parser *parser)
 
     if (match_token(parser, TOKEN_KEYWORD_TYPE_OF))
     {
+        String source_location = parser->previous.lexeme;
+
         expect_token(parser, '(');
 
         if (type_def)
         {
             assert(current_def);
 
-            ast_set_left_expr(current_def, append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF));
+            ast_set_left_expr(current_def, append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF, source_location));
             current_def = current_def->left_expr;
             ast_set_left_expr(current_def, parse_expression(parser));
         }
         else
         {
-            type_def = append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF);
+            type_def = append_ast(&parser->ast_nodes, AST_KIND_QUERY_TYPE_OF, source_location);
             ast_set_left_expr(type_def, parse_expression(parser));
             current_def = type_def;
         }
@@ -235,12 +333,12 @@ parse_type_definition(Parser *parser)
         {
             assert(current_def);
 
-            ast_set_left_expr(current_def, append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER));
+            ast_set_left_expr(current_def, append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER, parser->previous.lexeme));
             current_def = current_def->left_expr;
         }
         else
         {
-            type_def = append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER);
+            type_def = append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER, parser->previous.lexeme);
             current_def = type_def;
         }
 
@@ -275,7 +373,7 @@ parse_primary(Parser *parser)
         case TOKEN_IDENTIFIER:
         {
             expect_token(parser, TOKEN_IDENTIFIER);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_IDENTIFIER, parser->previous.lexeme);
 
             expr->name = parser->previous.lexeme;
         } break;
@@ -283,7 +381,7 @@ parse_primary(Parser *parser)
         case TOKEN_LITERAL_STRING:
         {
             expect_token(parser, TOKEN_LITERAL_STRING);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_STRING);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_STRING, parser->previous.lexeme);
             expr->type_id = parser->basetype_string;
 
             String value = parser->previous.lexeme;
@@ -301,7 +399,7 @@ parse_primary(Parser *parser)
         case TOKEN_LITERAL_INTEGER:
         {
             expect_token(parser, TOKEN_LITERAL_INTEGER);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_INTEGER);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_INTEGER, parser->previous.lexeme);
             expr->type_id = parser->basetype_s64;
 
             expr->_s64 = parse_integer(parser->previous.lexeme);
@@ -310,7 +408,7 @@ parse_primary(Parser *parser)
         case TOKEN_KEYWORD_TRUE:
         {
             expect_token(parser, TOKEN_KEYWORD_TRUE);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN, parser->previous.lexeme);
             expr->type_id = parser->basetype_bool;
 
             expr->_bool = true;
@@ -319,7 +417,7 @@ parse_primary(Parser *parser)
         case TOKEN_KEYWORD_FALSE:
         {
             expect_token(parser, TOKEN_KEYWORD_FALSE);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_BOOLEAN, parser->previous.lexeme);
             expr->type_id = parser->basetype_bool;
 
             expr->_bool = false;
@@ -328,7 +426,7 @@ parse_primary(Parser *parser)
         case TOKEN_LITERAL_FLOAT:
         {
             expect_token(parser, TOKEN_LITERAL_FLOAT);
-            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_FLOAT);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_LITERAL_FLOAT, parser->previous.lexeme);
             // TODO: choose correct type
             expr->type_id = parser->basetype_f32;
             // TODO: store value
@@ -349,8 +447,7 @@ parse_primary(Parser *parser)
 
         default:
         {
-            fprintf(stderr, "error: expected a primary expression at line %" PRId64 ", got '%.*s' %u\n",
-                    get_token_line(parser->lexer, parser->current), (int) parser->current.lexeme.count, parser->current.lexeme.data, parser->current.type);
+            report_error(parser->lexer.input, parser->current.lexeme, "expected a primary expression");
             parser->has_error = true;
         } break;
     }
@@ -368,9 +465,11 @@ parse_postfix_expression(Parser *parser)
         case TOKEN_KEYWORD_SIZE_OF:
         {
             expect_token(parser, TOKEN_KEYWORD_SIZE_OF);
+
+            expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF, parser->previous.lexeme);
+
             expect_token(parser, '(');
 
-            expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF);
             ast_set_type_def(expr, parse_type_definition(parser));
 
             expect_token(parser, ')');
@@ -382,7 +481,7 @@ parse_postfix_expression(Parser *parser)
 
             while (match_token(parser, '('))
             {
-                Ast *function_call = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_CALL);
+                Ast *function_call = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_CALL, expr->source_location);
 
                 ast_set_left_expr(function_call, expr);
                 expr = function_call;
@@ -427,7 +526,7 @@ parse_unary(Parser *parser)
             ast_kind = AST_KIND_EXPRESSION_UNARY_MINUS;
         }
 
-        Ast *expr = append_ast(&parser->ast_nodes, ast_kind);
+        Ast *expr = append_ast(&parser->ast_nodes, ast_kind, parser->previous.lexeme);
 
         ast_set_left_expr(expr, parse_unary(parser));
 
@@ -446,6 +545,8 @@ parse_factor(Parser *parser)
 
     while (match_token(parser, TOKEN_BINOP_MUL) || match_token(parser, TOKEN_BINOP_DIV))
     {
+        String source_location = parser->previous.lexeme;
+
         AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_BINOP_MUL)
@@ -461,7 +562,7 @@ parse_factor(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_unary(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_kind);
+        expr = append_ast(&parser->ast_nodes, ast_kind, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -477,6 +578,8 @@ parse_term(Parser *parser)
 
     while (match_token(parser, TOKEN_BINOP_PLUS) || match_token(parser, TOKEN_BINOP_MINUS))
     {
+        String source_location = parser->previous.lexeme;
+
         AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_BINOP_PLUS)
@@ -492,7 +595,7 @@ parse_term(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_factor(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_kind);
+        expr = append_ast(&parser->ast_nodes, ast_kind, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -509,6 +612,8 @@ parse_comparison(Parser *parser)
     while (match_token(parser, TOKEN_LESS) || match_token(parser, TOKEN_GREATER) ||
            match_token(parser, TOKEN_LESS_EQUAL) || match_token(parser, TOKEN_GREATER_EQUAL))
     {
+        String source_location = parser->previous.lexeme;
+
         AstKind ast_kind;
 
         switch (parser->previous.type)
@@ -523,7 +628,7 @@ parse_comparison(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_term(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_kind);
+        expr = append_ast(&parser->ast_nodes, ast_kind, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -539,6 +644,8 @@ parse_equality(Parser *parser)
 
     while (match_token(parser, TOKEN_EQUAL) || match_token(parser, TOKEN_NOT_EQUAL))
     {
+        String source_location = parser->previous.lexeme;
+
         AstKind ast_kind;
 
         if (parser->previous.type == TOKEN_EQUAL)
@@ -554,7 +661,7 @@ parse_equality(Parser *parser)
         Ast *left_expr = expr;
         Ast *right_expr = parse_comparison(parser);
 
-        expr = append_ast(&parser->ast_nodes, ast_kind);
+        expr = append_ast(&parser->ast_nodes, ast_kind, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -570,10 +677,12 @@ parse_logic_and(Parser *parser)
 
     while (match_token(parser, TOKEN_LOGICAL_AND))
     {
+        String source_location = parser->previous.lexeme;
+
         Ast *left_expr = expr;
         Ast *right_expr = parse_equality(parser);
 
-        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_AND);
+        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_AND, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -589,10 +698,12 @@ parse_logic_or(Parser *parser)
 
     while (match_token(parser, TOKEN_LOGICAL_OR))
     {
+        String source_location = parser->previous.lexeme;
+
         Ast *left_expr = expr;
         Ast *right_expr = parse_logic_and(parser);
 
-        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_OR);
+        expr = append_ast(&parser->ast_nodes, AST_KIND_EXPRESSION_LOGIC_OR, source_location);
 
         ast_set_left_expr(expr, left_expr);
         ast_set_right_expr(expr, right_expr);
@@ -612,7 +723,7 @@ parse_assignment(Parser *parser)
     {
         case TOKEN_PLUS_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_PLUS_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_PLUS_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_PLUS_EQUAL);
@@ -620,7 +731,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_MINUS_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_MINUS_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_MINUS_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_MINUS_EQUAL);
@@ -628,7 +739,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_MUL_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_MUL_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_MUL_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_MUL_EQUAL);
@@ -636,7 +747,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_DIV_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_DIV_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_DIV_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_DIV_EQUAL);
@@ -644,7 +755,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_OR_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_OR_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_OR_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_OR_EQUAL);
@@ -652,7 +763,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_AND_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_AND_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_AND_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_AND_EQUAL);
@@ -660,7 +771,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_XOR_EQUAL:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_XOR_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_XOR_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_XOR_EQUAL);
@@ -668,7 +779,7 @@ parse_assignment(Parser *parser)
 
         case TOKEN_ASSIGN:
         {
-            expr = append_ast(&parser->ast_nodes, AST_KIND_ASSIGN);
+            expr = append_ast(&parser->ast_nodes, AST_KIND_ASSIGN, parser->current.lexeme);
             expr->name = parser->previous.lexeme;
 
             expect_token(parser, TOKEN_ASSIGN);
@@ -676,7 +787,7 @@ parse_assignment(Parser *parser)
 
         default:
         {
-            fprintf(stderr, "error: expected an assignment operator after an identifier\n");
+            report_error(parser->lexer.input, parser->current.lexeme, "expected an assignment operator after an identifier");
         } break;
     }
 
@@ -733,9 +844,9 @@ parse_expression(Parser *parser)
 static Ast *
 parse_variable_declaration(Parser *parser)
 {
-    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION);
-
     expect_token(parser, TOKEN_IDENTIFIER);
+
+    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION, parser->previous.lexeme);
 
     ast->name = parser->previous.lexeme;
     ast->right_expr = 0;
@@ -788,9 +899,9 @@ parse_statement(Parser *parser)
 
         case TOKEN_KEYWORD_IF:
         {
-            ast = append_ast(&parser->ast_nodes, AST_KIND_IF);
-
             expect_token(parser, TOKEN_KEYWORD_IF);
+
+            ast = append_ast(&parser->ast_nodes, AST_KIND_IF, parser->previous.lexeme);
 
             expect_token(parser, '(');
 
@@ -808,9 +919,9 @@ parse_statement(Parser *parser)
 
         case TOKEN_KEYWORD_FOR:
         {
-            ast = append_ast(&parser->ast_nodes, AST_KIND_FOR);
-
             expect_token(parser, TOKEN_KEYWORD_FOR);
+
+            ast = append_ast(&parser->ast_nodes, AST_KIND_FOR, parser->previous.lexeme);
 
             expect_token(parser, '(');
 
@@ -841,9 +952,9 @@ parse_statement(Parser *parser)
 
         case TOKEN_KEYWORD_RETURN:
         {
-            ast = append_ast(&parser->ast_nodes, AST_KIND_RETURN);
-
             expect_token(parser, TOKEN_KEYWORD_RETURN);
+
+            ast = append_ast(&parser->ast_nodes, AST_KIND_RETURN, parser->previous.lexeme);
 
             ast_set_left_expr(ast, parse_expression(parser));
 
@@ -852,9 +963,9 @@ parse_statement(Parser *parser)
 
         case '{':
         {
-            ast = append_ast(&parser->ast_nodes, AST_KIND_BLOCK);
-
             expect_token(parser, '{');
+
+            ast = append_ast(&parser->ast_nodes, AST_KIND_BLOCK, parser->previous.lexeme);
 
             while (parser->current.type != '}')
             {
@@ -871,9 +982,7 @@ parse_statement(Parser *parser)
 
         default:
         {
-            fprintf(stderr, "error: expected a statement at line %" PRId64 ", got '%.*s' %u\n",
-                    get_token_line(parser->lexer, parser->current), (int) parser->current.lexeme.count, parser->current.lexeme.data, parser->current.type);
-            parser->has_error = true;
+            report_error(parser->lexer.input, parser->current.lexeme, "expected a statement");
         } break;
     }
 
@@ -883,9 +992,9 @@ parse_statement(Parser *parser)
 static Ast *
 parse_parameter(Parser *parser)
 {
-    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION);
-
     expect_token(parser, TOKEN_IDENTIFIER);
+
+    Ast *ast = append_ast(&parser->ast_nodes, AST_KIND_VARIABLE_DECLARATION, parser->previous.lexeme);
 
     ast->name = parser->previous.lexeme;
 
@@ -909,13 +1018,13 @@ parse_declaration(Parser *parser)
 
     if (match_token(parser, TOKEN_KEYWORD_STRUCT))
     {
-        declaration = append_ast(&parser->ast_nodes, AST_KIND_STRUCT_DECLARATION);
+        declaration = append_ast(&parser->ast_nodes, AST_KIND_STRUCT_DECLARATION, name);
 
         declaration->name = name;
     }
     else if (match_token(parser, '('))
     {
-        declaration = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_DECLARATION);
+        declaration = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_DECLARATION, name);
 
         declaration->name = name;
         declaration->address = S64MAX;
@@ -961,9 +1070,7 @@ parse_declaration(Parser *parser)
     }
     else
     {
-        fprintf(stderr, "error: expected struct or function declaration at line %" PRId64 ", got '%.*s' %u\n",
-                get_token_line(parser->lexer, parser->current), (int) parser->current.lexeme.count, parser->current.lexeme.data, parser->current.type);
-        parser->has_error = true;
+        report_error(parser->lexer.input, parser->current.lexeme, "expected struct or function declaration");
     }
 
     return declaration;

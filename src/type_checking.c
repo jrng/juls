@@ -61,7 +61,7 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
             }
             else
             {
-                fprintf(stderr, "error: undeclared identifier '%.*s'\n", (int) expr->name.count, expr->name.data);
+                report_error(parser->lexer.input, expr->source_location, "undeclared identifier '%.*s'", (int) expr->name.count, expr->name.data);
             }
         } break;
 
@@ -220,7 +220,7 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                     }
                     else
                     {
-                        fprintf(stderr, "error: undeclared identifier '%.*s'\n", (int) left_expr->name.count, left_expr->name.data);
+                        report_error(parser->lexer.input, left_expr->source_location, "undeclared identifier '%.*s'", (int) left_expr->name.count, left_expr->name.data);
                     }
                 }
             }
@@ -276,7 +276,7 @@ type_check_statement(Parser *parser, Ast *statement)
 
             if (statement->left_expr->type_id != parser->basetype_bool)
             {
-                fprintf(stderr, "error: expression in if statement has to be of type bool\n");
+                report_error(parser->lexer.input, statement->left_expr->source_location, "expression in if statement has to be of type bool");
             }
 
             assert(statement->children.first && statement->children.last);

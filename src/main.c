@@ -37,6 +37,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <inttypes.h>
 
