@@ -207,11 +207,6 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
 
         case AST_KIND_FUNCTION_CALL:
         {
-            For(argument, expr->children.first)
-            {
-                type_check_expression(parser, argument, 0);
-            }
-
             assert(expr->left_expr);
 
             Ast *left_expr = expr->left_expr;
@@ -226,10 +221,13 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                     {
                         Ast *argument = expr->children.first;
 
-                        if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_s64))
+                        type_check_expression(parser, argument, parser->basetype_s64);
+
+                        if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_s64) &&
+                            !can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_u64))
                         {
                             report_error(parser->lexer.input, left_expr->source_location,
-                                         "function 'exit' expects type s64 for parameter 1 ('return_code')");
+                                         "function 'exit' expects type s64/u64 for parameter 1 ('return_code')");
                         }
                     }
                     else
@@ -261,6 +259,8 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
 
                             while (parameter)
                             {
+                                type_check_expression(parser, argument, parameter->type_id);
+
                                 if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parameter->type_id))
                                 {
                                     Datatype *parameter_type = get_datatype(&parser->datatypes, parameter->type_id);
@@ -301,8 +301,43 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
             }
         } break;
 
+        case AST_KIND_ASSIGN:
+        case AST_KIND_PLUS_ASSIGN:
+        case AST_KIND_MINUS_ASSIGN:
+        case AST_KIND_MUL_ASSIGN:
+        case AST_KIND_DIV_ASSIGN:
+        case AST_KIND_OR_ASSIGN:
+        case AST_KIND_AND_ASSIGN:
+        case AST_KIND_XOR_ASSIGN:
+        {
+            expr->decl = find_declaration_by_name(expr, expr->name);
+
+            if (expr->decl)
+            {
+                expr->type_id = expr->decl->type_id;
+            }
+            else
+            {
+                report_error(parser->lexer.input, expr->source_location, "undeclared identifier '%.*s'", (int) expr->name.count, expr->name.data);
+            }
+
+            type_check_expression(parser, expr->right_expr, expr->type_id);
+
+            if (!can_implicitly_cast_to(&parser->datatypes, expr->right_expr->type_id, expr->type_id))
+            {
+                Datatype *left_datatype = get_datatype(&parser->datatypes, expr->type_id);
+                Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+
+                report_error(parser->lexer.input, expr->source_location,
+                             "can not assign type %.*s to type %.*s",
+                             (int) right_datatype->name.count, right_datatype->name.data,
+                             (int) left_datatype->name.count, left_datatype->name.data);
+            }
+        } break;
+
         default:
         {
+            printf("kind %u\n", expr->kind);
             assert(!"expression not supported");
         } break;
     }
@@ -368,6 +403,32 @@ type_check_statement(Parser *parser, Ast *statement)
             statement->type_id = statement->left_expr->type_id;
 
             // TODO: compare to return type of the function
+        } break;
+
+        case AST_KIND_FOR:
+        {
+            type_check_statement(parser, statement->decl);
+            type_check_expression(parser, statement->left_expr, 0);
+
+            if (statement->left_expr->type_id != parser->basetype_bool)
+            {
+                report_error(parser->lexer.input, statement->left_expr->source_location, "expression in for statement has to be of type bool");
+            }
+
+            type_check_expression(parser, statement->right_expr, 0);
+
+            For(stmt, statement->children.first)
+            {
+                type_check_statement(parser, stmt);
+            }
+        } break;
+
+        case AST_KIND_BLOCK:
+        {
+            For(stmt, statement->children.first)
+            {
+                type_check_statement(parser, stmt);
+            }
         } break;
 
         default:

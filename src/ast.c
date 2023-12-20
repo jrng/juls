@@ -491,51 +491,83 @@ find_declaration_by_name(Ast *ast, String name)
         Ast *before = ast;
         ast = ast->parent;
 
-        // TODO: do code blocks
-        if (ast->kind == AST_KIND_FUNCTION_DECLARATION)
+        switch (ast->kind)
         {
-            For(statement, ast->children.first)
+            case AST_KIND_FUNCTION_DECLARATION:
             {
-                if (statement == before) break;
-
-                if ((statement->kind == AST_KIND_VARIABLE_DECLARATION) &&
-                    strings_are_equal(statement->name, name))
+                For(statement, ast->children.first)
                 {
-                    result = statement;
-                    break;
+                    if (statement == before) break;
+
+                    if ((statement->kind == AST_KIND_VARIABLE_DECLARATION) &&
+                        strings_are_equal(statement->name, name))
+                    {
+                        result = statement;
+                        break;
+                    }
                 }
-            }
 
-            if (result) break;
+                if (!result)
+                {
+                    For(parameter, ast->parameters.first)
+                    {
+                        assert(parameter->kind == AST_KIND_VARIABLE_DECLARATION);
 
-            For(parameter, ast->parameters.first)
+                        if (strings_are_equal(parameter->name, name))
+                        {
+                            result = parameter;
+                            break;
+                        }
+                    }
+                }
+            } break;
+
+            case AST_KIND_GLOBAL_SCOPE:
             {
-                assert(parameter->kind == AST_KIND_VARIABLE_DECLARATION);
-
-                if (strings_are_equal(parameter->name, name))
+                For(statement, ast->children.first)
                 {
-                    result = parameter;
-                    break;
+                    if (((statement->kind == AST_KIND_VARIABLE_DECLARATION) ||
+                         (statement->kind == AST_KIND_VARIABLE_DECLARATION)) &&
+                        strings_are_equal(statement->name, name))
+                    {
+                        result = statement;
+                        break;
+                    }
                 }
-            }
+            } break;
 
-            if (result) break;
+            case AST_KIND_FOR:
+            {
+                Ast *declaration = ast->decl;
+
+                if ((declaration->kind == AST_KIND_VARIABLE_DECLARATION) &&
+                    strings_are_equal(declaration->name, name))
+                {
+                    result = declaration;
+                }
+            } break;
+
+            case AST_KIND_BLOCK:
+            {
+                For(statement, ast->children.first)
+                {
+                    if (statement == before) break;
+
+                    if ((statement->kind == AST_KIND_VARIABLE_DECLARATION) &&
+                        strings_are_equal(statement->name, name))
+                    {
+                        result = statement;
+                        break;
+                    }
+                }
+            } break;
+
+            default:
+            {
+            } break;
         }
-        else if (ast->kind == AST_KIND_GLOBAL_SCOPE)
-        {
-            For(statement, ast->children.first)
-            {
-                if (((statement->kind == AST_KIND_VARIABLE_DECLARATION) ||
-                     (statement->kind == AST_KIND_VARIABLE_DECLARATION)) &&
-                    strings_are_equal(statement->name, name))
-                {
-                    result = statement;
-                    break;
-                }
-            }
 
-            if (result) break;
-        }
+        if (result) break;
     }
 
     return result;
