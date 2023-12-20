@@ -185,6 +185,19 @@ ast_list_append(AstList *list, Ast *ast)
     ast->next = 0;
 }
 
+static inline s32
+ast_list_count(AstList *list)
+{
+    s32 count = 0;
+
+    For (elem, list->first)
+    {
+        count += 1;
+    }
+
+    return count;
+}
+
 static Ast *
 append_ast(AstBucketArray *array, AstKind ast_kind, String source_location)
 {

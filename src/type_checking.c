@@ -1,3 +1,29 @@
+static bool
+can_implicitly_cast_to(DatatypeTable *table, DatatypeId from_type_id, DatatypeId to_type_id)
+{
+    if (from_type_id == to_type_id)
+    {
+        return true;
+    }
+
+    Datatype *from_type = get_datatype(table, from_type_id);
+    Datatype *to_type = get_datatype(table, to_type_id);
+
+    if ((from_type->kind == DATATYPE_INTEGER) && (to_type->kind == DATATYPE_INTEGER))
+    {
+        if (to_type->size > from_type->size)
+        {
+            return true;
+        }
+    }
+    else
+    {
+        assert(!"not implemented");
+    }
+
+    return false;
+}
+
 static void type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id);
 
 static void
@@ -130,7 +156,15 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                 type_check_expression(parser, expr->right_expr, expr->left_expr->type_id);
             }
 
-            // TODO: are types comparable
+            if (can_implicitly_cast_to(&parser->datatypes, expr->left_expr->type_id, expr->right_expr->type_id) ||
+                can_implicitly_cast_to(&parser->datatypes, expr->right_expr->type_id, expr->left_expr->type_id))
+            {
+            }
+            else
+            {
+                // TODO: error
+                fprintf(stderr, "error: not compatible types\n");
+            }
 
             expr->type_id = parser->basetype_bool;
         } break;
@@ -149,38 +183,19 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                 type_check_expression(parser, expr->right_expr, expr->left_expr->type_id);
             }
 
-            Datatype *left_type = get_datatype(&parser->datatypes, expr->left_expr->type_id);
-            Datatype *right_type = get_datatype(&parser->datatypes, expr->right_expr->type_id);
-
-            u64 max_size = left_type->size;
-
-            if (right_type->size > max_size)
+            if (can_implicitly_cast_to(&parser->datatypes, expr->left_expr->type_id, expr->right_expr->type_id) ||
+                can_implicitly_cast_to(&parser->datatypes, expr->right_expr->type_id, expr->left_expr->type_id))
             {
-                max_size = right_type->size;
-            }
+                Datatype *left_type = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+                Datatype *right_type = get_datatype(&parser->datatypes, expr->right_expr->type_id);
 
-            DatatypeId type_id = 0;
-
-            if ((left_type->flags & DATATYPE_FLAG_UNSIGNED) && (right_type->flags & DATATYPE_FLAG_UNSIGNED))
-            {
-                switch (max_size)
+                if (left_type->size > right_type->size)
                 {
-                    case 1: type_id = parser->basetype_u8;  break;
-                    case 2: type_id = parser->basetype_u16; break;
-                    case 4: type_id = parser->basetype_u32; break;
-                    case 8: type_id = parser->basetype_u64; break;
-                    default: assert(!"not allowed"); break;
+                    expr->type_id = expr->left_expr->type_id;
                 }
-            }
-            else if (!(left_type->flags & DATATYPE_FLAG_UNSIGNED) && !(right_type->flags & DATATYPE_FLAG_UNSIGNED))
-            {
-                switch (max_size)
+                else
                 {
-                    case 1: type_id = parser->basetype_s8;  break;
-                    case 2: type_id = parser->basetype_s16; break;
-                    case 4: type_id = parser->basetype_s32; break;
-                    case 8: type_id = parser->basetype_s64; break;
-                    default: assert(!"not allowed"); break;
+                    expr->type_id = expr->right_expr->type_id;
                 }
             }
             else
@@ -188,8 +203,6 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                 // TODO: error
                 fprintf(stderr, "error: not compatible integer types\n");
             }
-
-            expr->type_id = type_id;
         } break;
 
         case AST_KIND_FUNCTION_CALL:
@@ -207,6 +220,25 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
             {
                 if (strings_are_equal(left_expr->name, S("exit")))
                 {
+                    s32 argument_count = ast_list_count(&expr->children);
+
+                    if (argument_count == 1)
+                    {
+                        Ast *argument = expr->children.first;
+
+                        if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_s64))
+                        {
+                            report_error(parser->lexer.input, left_expr->source_location,
+                                         "function 'exit' expects type s64 for parameter 1 ('return_code')");
+                        }
+                    }
+                    else
+                    {
+                        report_error(parser->lexer.input, left_expr->source_location,
+                                     "function 'exit' expects 1 argument, but was given %d",
+                                     argument_count);
+                    }
+
                     expr->type_id = parser->basetype_void;
                 }
                 else
@@ -216,6 +248,45 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                     if (expr->decl)
                     {
                         assert(expr->decl->type_id);
+
+                        s32 parameter_count = ast_list_count(&expr->decl->parameters);
+                        s32 argument_count = ast_list_count(&expr->children);
+
+                        if (argument_count == parameter_count)
+                        {
+                            Ast *parameter = expr->decl->parameters.first;
+                            Ast *argument = expr->children.first;
+
+                            s32 parameter_position = 1;
+
+                            while (parameter)
+                            {
+                                if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parameter->type_id))
+                                {
+                                    Datatype *parameter_type = get_datatype(&parser->datatypes, parameter->type_id);
+
+                                    report_error(parser->lexer.input, left_expr->source_location,
+                                                 "function '%.*s' expects type %.*s for parameter %d ('%.*s')",
+                                                 (int) left_expr->name.count, left_expr->name.data,
+                                                 (int) parameter_type->name.count, parameter_type->name.data,
+                                                 parameter_position,
+                                                 (int) parameter->name.count, parameter->name.data);
+                                }
+
+                                parameter = parameter->next;
+                                argument = argument->next;
+
+                                parameter_position += 1;
+                            }
+                        }
+                        else
+                        {
+                            report_error(parser->lexer.input, left_expr->source_location,
+                                         "function '%.*s' expects %d arguments, but was given %d",
+                                         (int) left_expr->name.count, left_expr->name.data,
+                                         parameter_count, argument_count);
+                        }
+
                         expr->type_id = expr->decl->type_id;
                     }
                     else
