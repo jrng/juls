@@ -206,6 +206,36 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
             }
         } break;
 
+        case AST_KIND_EXPRESSION_UNARY_MINUS:
+        {
+            DatatypeId type_id = parser->basetype_s64;
+
+            if (preferred_type_id)
+            {
+                Datatype *datatype = get_datatype(&parser->datatypes, preferred_type_id);
+
+                if ((datatype->kind == DATATYPE_INTEGER) &&
+                    !(datatype->flags & DATATYPE_FLAG_UNSIGNED))
+                {
+                    type_id = preferred_type_id;
+                }
+            }
+
+            type_check_expression(parser, expr->left_expr, type_id);
+
+            if (expr->left_expr->kind == AST_KIND_LITERAL_INTEGER)
+            {
+                Datatype *datatype = get_datatype(&parser->datatypes, type_id);
+
+                // TODO: does fit into type?
+
+                expr->kind = AST_KIND_LITERAL_INTEGER;
+                expr->_s64 = -expr->left_expr->_s64;
+            }
+
+            expr->type_id = type_id;
+        } break;
+
         case AST_KIND_FUNCTION_CALL:
         {
             assert(expr->left_expr);

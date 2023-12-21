@@ -51,13 +51,13 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-#define S32MIN 0x80000000
-#define S32MAX 0x7FFFFFFF
+#define S32MIN ((s32) 0x80000000)
+#define S32MAX ((s32) 0x7FFFFFFF)
 
-#define S64MIN 0x8000000000000000
-#define S64MAX 0x7FFFFFFFFFFFFFFF
+#define S64MIN ((s64) 0x8000000000000000)
+#define S64MAX ((s64) 0x7FFFFFFFFFFFFFFF)
 
-#define U64MAX 0xFFFFFFFFFFFFFFFF
+#define U64MAX ((u64) 0xFFFFFFFFFFFFFFFF)
 
 #define Align(value, alignment) (((value) + (alignment) - (s64) 1) & ~((alignment) - (s64) 1))
 #define ArrayCount(arr) (sizeof(arr) / sizeof((arr)[0]))

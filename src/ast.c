@@ -349,6 +349,13 @@ print_ast(Ast *ast, s32 indent)
             print_ast(ast->right_expr, indent + 2);
         } break;
 
+        case AST_KIND_EXPRESSION_UNARY_MINUS:
+        {
+            fprintf(stderr, "%*sUnaryMinus\n", indent, "");
+
+            print_ast(ast->left_expr, indent + 2);
+        } break;
+
         case AST_KIND_LITERAL_BOOLEAN:
         {
             fprintf(stderr, "%*sLiteralBoolean(type_id = %u): %s\n", indent, "", ast->type_id, ast->_bool ? "true" : "false");

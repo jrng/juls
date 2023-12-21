@@ -51,7 +51,16 @@ arm64_bl(StringBuilder *builder, s32 offset)
 static inline void
 arm64_move_immediate16(StringBuilder *builder, Arm64Register reg, u16 value)
 {
+    // MOV (wide immediate)
     u32 inst = 0xD2800000 | ((u32) value << 5) | reg;
+    string_builder_append_u32le(builder, inst);
+}
+
+static inline void
+arm64_move_inverted_immediate16(StringBuilder *builder, Arm64Register reg, u16 value)
+{
+    // MOV (inverted wide immediate)
+    u32 inst = 0x92800000 | ((u32) value << 5) | reg;
     string_builder_append_u32le(builder, inst);
 }
 
@@ -540,7 +549,16 @@ arm64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatfo
             }
             else
             {
-                assert(!"not implemented");
+                u64 inverted = ~expr->_u64;
+
+                if (inverted <= 0xFFFF)
+                {
+                    arm64_move_inverted_immediate16(code, ARM64_R0, (u16) inverted);
+                }
+                else
+                {
+                    assert(!"not implemented");
+                }
             }
 
             u64 stack_size = Align(datatype->size, 16);
