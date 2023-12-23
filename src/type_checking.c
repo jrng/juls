@@ -11,7 +11,7 @@ can_implicitly_cast_to(DatatypeTable *table, DatatypeId from_type_id, DatatypeId
 
     if ((from_type->kind == DATATYPE_INTEGER) && (to_type->kind == DATATYPE_INTEGER))
     {
-        if (!(to_type->flags & DATATYPE_FLAG_UNSIGNED) &&
+        if ((!(to_type->flags & DATATYPE_FLAG_UNSIGNED) || (from_type->flags & DATATYPE_FLAG_UNSIGNED)) &&
             (to_type->size > from_type->size))
         {
             return true;
