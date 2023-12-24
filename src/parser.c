@@ -290,7 +290,18 @@ parse_type_definition(Parser *parser)
     {
         if (match_token(parser, '*'))
         {
-            assert(!"not implemented");
+            if (type_def)
+            {
+                assert(current_def);
+
+                ast_set_left_expr(current_def, append_ast(&parser->ast_nodes, AST_KIND_POINTER, parser->previous.lexeme));
+                current_def = current_def->left_expr;
+            }
+            else
+            {
+                type_def = append_ast(&parser->ast_nodes, AST_KIND_POINTER, parser->previous.lexeme);
+                current_def = type_def;
+            }
         }
         else if (match_token(parser, '['))
         {
@@ -458,52 +469,49 @@ parse_primary(Parser *parser)
 static Ast *
 parse_postfix_expression(Parser *parser)
 {
-    Ast *expr = 0;
+    Ast *expr = parse_primary(parser);
 
-    switch (parser->current.type)
+    for (;;)
     {
-        case TOKEN_KEYWORD_SIZE_OF:
+        if (match_token(parser, '('))
         {
-            expect_token(parser, TOKEN_KEYWORD_SIZE_OF);
+            Ast *function_call = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_CALL, expr->source_location);
 
-            expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF, parser->previous.lexeme);
+            ast_set_left_expr(function_call, expr);
+            expr = function_call;
 
-            expect_token(parser, '(');
+            for (;;)
+            {
+                Ast *argument = parse_expression(parser);
 
-            ast_set_type_def(expr, parse_type_definition(parser));
+                if (!argument) return 0;
+
+                ast_list_append(&function_call->children, argument);
+                argument->parent = function_call;
+
+                if (!match_token(parser, ','))
+                {
+                    break;
+                }
+            }
 
             expect_token(parser, ')');
-        } break;
-
-        default:
+        }
+        else if (match_token(parser, '.'))
         {
-            expr = parse_primary(parser);
+            expect_token(parser, TOKEN_IDENTIFIER);
 
-            while (match_token(parser, '('))
-            {
-                Ast *function_call = append_ast(&parser->ast_nodes, AST_KIND_FUNCTION_CALL, expr->source_location);
+            Ast *member = append_ast(&parser->ast_nodes, AST_KIND_MEMBER, parser->previous.lexeme);
 
-                ast_set_left_expr(function_call, expr);
-                expr = function_call;
+            member->name = parser->previous.lexeme;
 
-                for (;;)
-                {
-                    Ast *argument = parse_expression(parser);
-
-                    if (!argument) return 0;
-
-                    ast_list_append(&function_call->children, argument);
-                    argument->parent = function_call;
-
-                    if (!match_token(parser, ','))
-                    {
-                        break;
-                    }
-                }
-
-                expect_token(parser, ')');
-            }
-        } break;
+            ast_set_left_expr(member, expr);
+            expr = member;
+        }
+        else
+        {
+            break;
+        }
     }
 
     return expr;
@@ -512,7 +520,19 @@ parse_postfix_expression(Parser *parser)
 static Ast *
 parse_unary(Parser *parser)
 {
-    if (match_token(parser, TOKEN_UNARY_NOT) || match_token(parser, TOKEN_BINOP_MINUS))
+    if (match_token(parser, TOKEN_KEYWORD_SIZE_OF))
+    {
+        Ast *expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF, parser->previous.lexeme);
+
+        expect_token(parser, '(');
+
+        ast_set_type_def(expr, parse_type_definition(parser));
+
+        expect_token(parser, ')');
+
+        return expr;
+    }
+    else if (match_token(parser, TOKEN_UNARY_NOT) || match_token(parser, TOKEN_BINOP_MINUS))
     {
         AstKind ast_kind;
 
