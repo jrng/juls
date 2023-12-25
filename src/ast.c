@@ -5,6 +5,7 @@ typedef enum
     DATATYPE_INTEGER    = 2,
     DATATYPE_FLOAT      = 3,
     DATATYPE_STRING     = 4,
+    DATATYPE_POINTER    = 5,
 } DatatypeKind;
 
 typedef enum
@@ -12,16 +13,18 @@ typedef enum
     DATATYPE_FLAG_UNSIGNED = (1 << 0),
 } DatatypeFlag;
 
+typedef u16 DatatypeId;
+
 typedef struct
 {
     DatatypeKind kind;
     u32 flags;
 
+    DatatypeId ref;
+
     String name;
     u64 size;
 } Datatype;
-
-typedef u16 DatatypeId;
 
 typedef struct
 {
@@ -161,6 +164,22 @@ find_datatype_by_name(DatatypeTable *table, String name)
         Datatype *datatype = table->items + i;
 
         if (strings_are_equal(datatype->name, name))
+        {
+            return i;
+        }
+    }
+
+    return 0;
+}
+
+static inline DatatypeId
+find_datatype_by_kind_and_reference(DatatypeTable *table, DatatypeKind kind, DatatypeId ref_id)
+{
+    for (s32 i = 1; i < table->count; i += 1)
+    {
+        Datatype *datatype = table->items + i;
+
+        if ((datatype->kind == kind) && (datatype->ref == ref_id))
         {
             return i;
         }

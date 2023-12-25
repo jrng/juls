@@ -53,6 +53,23 @@ resolve_type(Parser *parser, Ast *type_def)
             }
         } break;
 
+        case AST_KIND_POINTER:
+        {
+            resolve_type(parser, type_def->left_expr);
+
+            assert(type_def->left_expr->type_id);
+
+            DatatypeId type_id = find_datatype_by_kind_and_reference(&parser->datatypes, DATATYPE_POINTER, type_def->left_expr->type_id);
+
+            if (!type_id)
+            {
+                type_id = parser->datatypes.count;
+                array_append(&parser->datatypes, ((Datatype) { .kind = DATATYPE_POINTER, .flags = 0, .ref = type_def->left_expr->type_id, .name = S("*"), .size = 8 }));
+            }
+
+            type_def->type_id = type_id;
+        } break;
+
         default:
         {
             assert(!"type not supported");

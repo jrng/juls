@@ -81,6 +81,21 @@ static inline void *allocate(u64 size);
 static inline void deallocate(void *ptr, u64 size);
 
 #include "allocator.c"
+
+static Allocator default_allocator;
+
+#define array_append(array, item)                                                                                                           \
+    do {                                                                                                                                    \
+        if ((array)->count >= (array)->allocated)                                                                                           \
+        {                                                                                                                                   \
+            (array)->items     = realloc(&default_allocator, (array)->items,                                                                \
+                                         (array)->allocated * sizeof(*(array)->items),                                                      \
+                                         (((array)->allocated == 0) ? 16 : 2 * (array)->allocated) * sizeof(*(array)->items), 8, false);    \
+            (array)->allocated = ((array)->allocated == 0) ? 16 : 2 * (array)->allocated;                                                   \
+        }                                                                                                                                   \
+        (array)->items[(array)->count++] = (item);                                                                                          \
+    } while (0);
+
 #include "strings.c"
 #include "lexer.c"
 #include "ast.c"
@@ -96,8 +111,6 @@ static inline void deallocate(void *ptr, u64 size);
 #  include "unix.c"
 #  include <sys/wait.h>
 #endif
-
-static Allocator default_allocator;
 
 static const u32 JULS_VERSION_MAJOR = 1;
 static const u32 JULS_VERSION_MINOR = 0;
@@ -366,18 +379,6 @@ typedef struct
     SymbolEntry *items;
 } SymbolTable;
 
-#define array_append(array, item)                                                                                                           \
-    do {                                                                                                                                    \
-        if ((array)->count >= (array)->allocated)                                                                                           \
-        {                                                                                                                                   \
-            (array)->items     = realloc(&default_allocator, (array)->items,                                                                \
-                                         (array)->allocated * sizeof(*(array)->items),                                                      \
-                                         (((array)->allocated == 0) ? 16 : 2 * (array)->allocated) * sizeof(*(array)->items), 8, false);    \
-            (array)->allocated = ((array)->allocated == 0) ? 16 : 2 * (array)->allocated;                                                   \
-        }                                                                                                                                   \
-        (array)->items[(array)->count++] = (item);                                                                                          \
-    } while (0);
-
 #include "arm64.c"
 #include "x64.c"
 #include "elf.c"
@@ -552,35 +553,35 @@ int main(s32 argument_count, char **arguments)
     array_append(&parser.datatypes, ((Datatype) { 0 }));
 
     parser.basetype_void = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_VOID, .flags = 0, .name = S("void"), .size = 0 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_VOID, .flags = 0, .ref = 0, .name = S("void"), .size = 0 }));
 
     parser.basetype_bool = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .name = S("bool"), .size = 1 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .ref = 0, .name = S("bool"), .size = 1 }));
 
     parser.basetype_s8 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s8"), .size = 1 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s8"), .size = 1 }));
     parser.basetype_s16 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s16"), .size = 2 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s16"), .size = 2 }));
     parser.basetype_s32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s32"), .size = 4 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s32"), .size = 4 }));
     parser.basetype_s64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .name = S("s64"), .size = 8 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s64"), .size = 8 }));
 
     parser.basetype_u8 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u8"), .size = 1 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u8"), .size = 1 }));
     parser.basetype_u16 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u16"), .size = 2 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u16"), .size = 2 }));
     parser.basetype_u32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u32"), .size = 4 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u32"), .size = 4 }));
     parser.basetype_u64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .name = S("u64"), .size = 8 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u64"), .size = 8 }));
 
     parser.basetype_f32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .name = S("f32"), .size = 4 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f32"), .size = 4 }));
     parser.basetype_f64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .name = S("f64"), .size = 8 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f64"), .size = 8 }));
     parser.basetype_string = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_STRING, .flags = 0, .name = S("string"), .size = 16 }));
+    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_STRING, .flags = 0, .ref = 0, .name = S("string"), .size = 16 }));
 
     parse(&parser);
     type_checking(&parser);
