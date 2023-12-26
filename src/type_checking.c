@@ -17,6 +17,15 @@ can_implicitly_cast_to(DatatypeTable *table, DatatypeId from_type_id, DatatypeId
             return true;
         }
     }
+    else if ((from_type->kind == DATATYPE_POINTER) && (to_type->kind == DATATYPE_POINTER))
+    {
+        Datatype *ref_type = get_datatype(table, to_type->ref);
+
+        if (ref_type->kind == DATATYPE_VOID)
+        {
+            return true;
+        }
+    }
     else
     {
         assert(!"not implemented");
@@ -380,6 +389,46 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                              "can not assign type %.*s to type %.*s",
                              (int) right_datatype->name.count, right_datatype->name.data,
                              (int) left_datatype->name.count, left_datatype->name.data);
+            }
+        } break;
+
+        case AST_KIND_MEMBER:
+        {
+            type_check_expression(parser, expr->left_expr, 0);
+
+            Datatype *datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
+
+            if (expr->left_expr->type_id == parser->basetype_string)
+            {
+                if (strings_are_equal(expr->name, S("count")))
+                {
+                    expr->type_id = parser->basetype_s64;
+                }
+                else if (strings_are_equal(expr->name, S("data")))
+                {
+                    DatatypeId type_id = find_datatype_by_kind_and_reference(&parser->datatypes, DATATYPE_POINTER, parser->basetype_u8);
+
+                    if (!type_id)
+                    {
+                        type_id = parser->datatypes.count;
+                        array_append(&parser->datatypes, ((Datatype) { .kind = DATATYPE_POINTER, .flags = 0, .ref = parser->basetype_u8, .name = S("*"), .size = 8 }));
+                    }
+
+                    expr->type_id = type_id;
+                }
+                else
+                {
+                    report_error(parser->lexer.input, expr->source_location,
+                                 "type string has no member '%.*s'",
+                                 (int) expr->name.count, expr->name.data);
+                }
+            }
+            else
+            {
+                report_error(parser->lexer.input, expr->source_location,
+                             "type %.*s has no member '%.*s'",
+                             (int) datatype->name.count, datatype->name.data,
+                             (int) expr->name.count, expr->name.data);
             }
         } break;
 
