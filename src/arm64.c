@@ -588,14 +588,12 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             parser->current_stack_offset += stack_size;
 
             arm64_move_immediate16(&codegen->section_text, ARM64_R0, expr->name.count);
-            arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, 8);
 
             u64 instruction_offset = string_builder_get_size(&codegen->section_text);
             void *patch_addr = string_builder_append_size(&codegen->section_text, 8);
 
-            arm64_copy_from_register_to_stack(&codegen->section_text, 8, ARM64_R0, 8);
-
-            // TODO: combine to STP
+            u32 inst = 0xA9000000 | ((u32) ARM64_R1 << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
+            string_builder_append_u32le(&codegen->section_text, inst);
 
             array_append(&codegen->patches, ((Patch) { .patch = patch_addr,
                                                        .instruction_offset = instruction_offset,
