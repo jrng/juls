@@ -1,5 +1,5 @@
 static void
-generate_elf(StringBuilder *builder, StringBuilder code, SymbolTable symbol_table, JulsArchitecture target_architecture)
+generate_elf(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, JulsArchitecture target_architecture)
 {
     string_builder_append_string(builder, S("\x7F""ELF"));
 
@@ -53,10 +53,10 @@ generate_elf(StringBuilder *builder, StringBuilder code, SymbolTable symbol_tabl
     u64 *p_vaddr  = string_builder_append_size(builder, 8); // p_vaddr
     u64 *p_paddr  = string_builder_append_size(builder, 8); // p_paddr
 
-    u64 code_size = string_builder_get_size(&code);
+    u64 text_size = string_builder_get_size(&codegen.section_text);
 
-    string_builder_append_u64le(builder, code_size); // p_filesz
-    string_builder_append_u64le(builder, code_size); // p_memsz
+    string_builder_append_u64le(builder, text_size); // p_filesz
+    string_builder_append_u64le(builder, text_size); // p_memsz
     string_builder_append_u64le(builder, 0x1000); // p_align
 
     u64 offset = string_builder_get_size(builder);
@@ -67,7 +67,7 @@ generate_elf(StringBuilder *builder, StringBuilder code, SymbolTable symbol_tabl
     *p_paddr = vaddr;
     *e_entry = vaddr;
 
-    string_builder_append_builder(builder, code);
+    string_builder_append_builder(builder, codegen.section_text);
 
     // .shstrtab
 
@@ -143,7 +143,7 @@ generate_elf(StringBuilder *builder, StringBuilder code, SymbolTable symbol_tabl
     string_builder_append_u64le(builder, 6); // sh_flags
     string_builder_append_u64le(builder, vaddr); // sh_addr
     string_builder_append_u64le(builder, offset); // sh_offset
-    string_builder_append_u64le(builder, code_size); // sh_size
+    string_builder_append_u64le(builder, text_size); // sh_size
     string_builder_append_u32le(builder, 0); // sh_link
     string_builder_append_u32le(builder, 0); // sh_info
     string_builder_append_u64le(builder, 1); // sh_addralign

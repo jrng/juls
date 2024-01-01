@@ -379,25 +379,46 @@ typedef struct
     SymbolEntry *items;
 } SymbolTable;
 
+typedef struct
+{
+    void *patch;
+    u64 instruction_offset;
+    u64 string_offset;
+} Patch;
+
+typedef struct
+{
+    s32 count;
+    s32 allocated;
+    Patch *items;
+} PatchArray;
+
+typedef struct
+{
+    StringBuilder section_text;
+    StringBuilder section_cstring;
+    PatchArray patches;
+} Codegen;
+
 #include "arm64.c"
 #include "x64.c"
 #include "elf.c"
 #include "macho.c"
 
 static void
-generate_code(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, JulsPlatform target_platform, JulsArchitecture target_architecture)
+generate_code(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform, JulsArchitecture target_architecture)
 {
     // linux syscalls: https://syscall.sh
 
     if (target_architecture == JulsArchitectureArm64)
     {
-        generate_arm64(parser, code, symbol_table, target_platform);
+        generate_arm64(parser, codegen, symbol_table, target_platform);
     }
     else
     {
         assert(target_architecture == JulsArchitectureX86_64);
 
-        generate_x64(parser, code, symbol_table, target_platform);
+        generate_x64(parser, codegen, symbol_table, target_platform);
     }
 }
 
@@ -586,12 +607,17 @@ int main(s32 argument_count, char **arguments)
     parse(&parser);
     type_checking(&parser);
 
-    StringBuilder code;
-    initialize_string_builder(&code, &default_allocator);
+    Codegen codegen;
+
+    initialize_string_builder(&codegen.section_text, &default_allocator);
+    initialize_string_builder(&codegen.section_cstring, &default_allocator);
+    codegen.patches.count = 0;
+    codegen.patches.allocated = 0;
+    codegen.patches.items = 0;
 
     SymbolTable symbol_table = { 0 };
 
-    generate_code(&parser, &code, &symbol_table, target_platform, target_architecture);
+    generate_code(&parser, &codegen, &symbol_table, target_platform, target_architecture);
 
     StringBuilder builder;
     initialize_string_builder(&builder, &default_allocator);
@@ -599,11 +625,11 @@ int main(s32 argument_count, char **arguments)
     if ((target_platform == JulsPlatformAndroid) ||
         (target_platform == JulsPlatformLinux))
     {
-        generate_elf(&builder, code, symbol_table, target_architecture);
+        generate_elf(&builder, codegen, symbol_table, target_architecture);
     }
     else if (target_platform == JulsPlatformMacOs)
     {
-        generate_macho(&builder, code, symbol_table, target_architecture);
+        generate_macho(&builder, codegen, symbol_table, target_architecture);
     }
 
     File *output_file = create_file(&default_allocator, output_filename,

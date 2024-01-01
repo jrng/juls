@@ -1,5 +1,5 @@
 static void
-generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_table, JulsArchitecture target_architecture)
+generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, JulsArchitecture target_architecture)
 {
     u64 page_size = 1 << 12; // 4096
     u64 vm_base = 0x100000000; // 4 GiB
@@ -72,7 +72,7 @@ generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_ta
     u64 *segment_text_size = string_builder_append_size(builder, 8);
     string_builder_append_u32le(builder, 5); // maximum protection
     string_builder_append_u32le(builder, 5); // initial protection
-    string_builder_append_u32le(builder, 1); // number of section
+    string_builder_append_u32le(builder, 2); // number of section
     string_builder_append_u32le(builder, 0); // flags
 
     // section __TEXT,__text
@@ -85,6 +85,20 @@ generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_ta
     string_builder_append_u32le(builder, 0); // relocations file offset
     string_builder_append_u32le(builder, 0); // number of relocations
     string_builder_append_u32le(builder, 0x80000400); // flag/type
+    string_builder_append_u32le(builder, 0); // reserved1
+    string_builder_append_u32le(builder, 0); // reserved2
+    string_builder_append_u32le(builder, 0); // reserved3
+
+    // section __TEXT,__cstring
+    string_builder_append_string(builder, S("__cstring\0\0\0\0\0\0\0")); // section name
+    string_builder_append_string(builder, S("__TEXT\0\0\0\0\0\0\0\0\0\0")); // segment name
+    u64 *section_cstring_vmaddr = string_builder_append_size(builder, 8); // section address
+    u64 *section_cstring_size = string_builder_append_size(builder, 8); // section size
+    u32 *section_cstring_offset = string_builder_append_size(builder, 4); // section file offset
+    string_builder_append_u32le(builder, 0); // alignment
+    string_builder_append_u32le(builder, 0); // relocations file offset
+    string_builder_append_u32le(builder, 0); // number of relocations
+    string_builder_append_u32le(builder, 0x00000002); // flag/type
     string_builder_append_u32le(builder, 0); // reserved1
     string_builder_append_u32le(builder, 0); // reserved2
     string_builder_append_u32le(builder, 0); // reserved3
@@ -230,9 +244,10 @@ generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_ta
     // end load commands
     //
 
-    u64 code_size = string_builder_get_size(&code);
+    u64 text_size = Align(string_builder_get_size(&codegen.section_text), 4);
+    u64 cstring_size = Align(string_builder_get_size(&codegen.section_cstring), 4);
 
-    u64 segment_size = load_commands_end + code_size;
+    u64 segment_size = load_commands_end + text_size + cstring_size;
     u64 padding_size = Align(segment_size, page_size) - segment_size;
 
     for (u64 i = 0; i < padding_size; i += 1)
@@ -240,20 +255,64 @@ generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_ta
         string_builder_append_u8(builder, 0);
     }
 
-    u64 code_start = string_builder_get_size(builder);
+    u64 text_start = string_builder_get_size(builder);
 
-    *entry_point = code_start;
+    *entry_point = text_start;
 
-    string_builder_append_builder(builder, code);
+    string_builder_append_builder(builder, codegen.section_text);
 
-    u64 code_end = string_builder_get_size(builder);
+    u64 text_end = string_builder_get_size(builder);
 
-    *segment_text_vmsize = code_end;
-    *segment_text_size = code_end;
+    *section_text_vmaddr = vm_base + text_start;
+    *section_text_size = text_end - text_start;
+    *section_text_offset = (u32) text_start;
 
-    *section_text_vmaddr = vm_base + code_start;
-    *section_text_size = code_end - code_start;
-    *section_text_offset = (u32) code_start;
+    padding_size = (text_size + cstring_size) -
+                   (string_builder_get_size(&codegen.section_text) +
+                    string_builder_get_size(&codegen.section_cstring));
+
+    for (u64 i = 0; i < padding_size; i += 1)
+    {
+        string_builder_append_u8(builder, 0);
+    }
+
+    u64 cstring_start = string_builder_get_size(builder);
+
+    string_builder_append_builder(builder, codegen.section_cstring);
+
+    u64 cstring_end = string_builder_get_size(builder);
+
+    *section_cstring_vmaddr = vm_base + cstring_start;
+    *section_cstring_size = cstring_end - cstring_start;
+    *section_cstring_offset = (u32) cstring_start;
+
+    u64 segment_text_end = string_builder_get_size(builder);
+
+    *segment_text_vmsize = segment_text_end;
+    *segment_text_size = segment_text_end;
+
+    {
+        for (s32 i = 0; i < codegen.patches.count; i += 1)
+        {
+            Patch *patch = codegen.patches.items + i;
+
+            u64 instruction_address = vm_base + text_start + patch->instruction_offset;
+            u64 string_address = vm_base + cstring_start + patch->string_offset;
+
+            if (target_architecture == JulsArchitectureArm64)
+            {
+                u64 page_count = (string_address - instruction_address) / 4096;
+                u64 offset = string_address - (string_address & ~0xFFF);
+
+                *((u32 *) patch->patch + 0) = 0x90000000 | ARM64_R0;
+                *((u32 *) patch->patch + 1) = 0x91000000 | ((u32) offset << 10) | (ARM64_R0 << 5) | ARM64_R0;
+            }
+            else if (target_architecture == JulsArchitectureX86_64)
+            {
+                assert(!"not implemented");
+            }
+        }
+    }
 
     // THIS MUST BE AT THE END OF THE FILE
     u64 linkedit_start = string_builder_get_size(builder);
@@ -282,7 +341,7 @@ generate_macho(StringBuilder *builder, StringBuilder code, SymbolTable symbol_ta
         string_builder_append_u8(&symbol_table_section, 0x0F); // symbol type
         string_builder_append_u8(&symbol_table_section, 1); // section number
         string_builder_append_u16le(&symbol_table_section, 0); // data info
-        string_builder_append_u64le(&symbol_table_section, vm_base + code_start + entry->offset); // symbol address
+        string_builder_append_u64le(&symbol_table_section, vm_base + text_start + entry->offset); // symbol address
 
         string_builder_append_string(builder, entry->name);
         string_builder_append_u8(builder, 0);

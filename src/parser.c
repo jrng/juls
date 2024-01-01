@@ -402,9 +402,41 @@ parse_primary(Parser *parser)
             value.data += 1;
             value.count -= 2;
 
-            // TODO: escape string value
+            expr->name.count = 0;
+            expr->name.data = alloc(&default_allocator, value.count, 8, false);
 
-            expr->name = value;
+            bool escaped = false;
+
+            for (s64 i = 0; i < value.count; i += 1)
+            {
+                u8 c = value.data[i];
+
+                if (escaped)
+                {
+                    switch (c)
+                    {
+                        case 'n':
+                        {
+                            expr->name.data[expr->name.count] = '\n';
+                            expr->name.count += 1;
+                        } break;
+                    }
+
+                    escaped = false;
+                }
+                else
+                {
+                    if (c == '\\')
+                    {
+                        escaped = true;
+                    }
+                    else
+                    {
+                        expr->name.data[expr->name.count] = value.data[i];
+                        expr->name.count += 1;
+                    }
+                }
+            }
         } break;
 
         case TOKEN_LITERAL_INTEGER:

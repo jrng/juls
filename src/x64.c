@@ -587,7 +587,7 @@ x64_compare_al_to_zero(StringBuilder *builder, X64Register reg)
 }
 
 static void
-x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform target_platform)
+x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform target_platform)
 {
     switch (expr->kind)
     {
@@ -598,11 +598,11 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             u64 stack_size = datatype->size;
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset += stack_size;
 
-            x64_move_immediate32_unsigned_into_register(code, X64_RAX, expr->_bool ? 1 : 0);
-            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
+            x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, expr->_bool ? 1 : 0);
+            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_LITERAL_INTEGER:
@@ -614,7 +614,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             {
                 if (expr->_u64 <= 0xFFFFFFFF)
                 {
-                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, expr->_u32);
+                    x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, expr->_u32);
                 }
                 else
                 {
@@ -625,7 +625,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             {
                 if ((expr->_s64 >= S32MIN) && (expr->_s64 <= S32MAX))
                 {
-                    x64_move_immediate32_signed_into_register(code, X64_RAX, expr->_u32);
+                    x64_move_immediate32_signed_into_register(&codegen->section_text, X64_RAX, expr->_u32);
                 }
                 else
                 {
@@ -636,10 +636,10 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             u64 stack_size = datatype->size;
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset += stack_size;
 
-            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
+            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_IDENTIFIER:
@@ -655,10 +655,10 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             u64 stack_size = datatype->size;
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset += stack_size;
 
-            x64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+            x64_copy_from_stack_to_stack(&codegen->section_text, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
         } break;
 
         case AST_KIND_EXPRESSION_EQUAL:
@@ -668,8 +668,8 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
         case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
         case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
         {
-            x64_emit_expression(parser, code, expr->left_expr, target_platform);
-            x64_emit_expression(parser, code, expr->right_expr, target_platform);
+            x64_emit_expression(parser, codegen, expr->left_expr, target_platform);
+            x64_emit_expression(parser, codegen, expr->right_expr, target_platform);
 
             Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
             Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
@@ -690,17 +690,17 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(code, X64_RBX, 0, right_datatype->size);
-            x64_copy_from_stack_to_register(code, X64_RAX, right_stack_size, left_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, left_datatype->size);
 
             // TODO: maybe sign extend arguments
 
             assert(stack_size <= 0xFFFFFFFF);
             assert(total_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) (total_stack_size - stack_size));
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (total_stack_size - stack_size));
             parser->current_stack_offset -= total_stack_size - stack_size;
 
-            x64_compare_registers(code, X64_RAX, X64_RBX, max_datatype_size);
+            x64_compare_registers(&codegen->section_text, X64_RAX, X64_RBX, max_datatype_size);
 
             bool is_signed = true; // TODO:
 
@@ -708,54 +708,54 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             {
                 if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
                 {
-                    x64_setcc(code, 0x94, 0);
+                    x64_setcc(&codegen->section_text, 0x94, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
                 {
-                    x64_setcc(code, 0x95, 0);
+                    x64_setcc(&codegen->section_text, 0x95, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
                 {
-                    x64_setcc(code, 0x9C, 0);
+                    x64_setcc(&codegen->section_text, 0x9C, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
                 {
-                    x64_setcc(code, 0x9F, 0);
+                    x64_setcc(&codegen->section_text, 0x9F, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
                 {
-                    x64_setcc(code, 0x9E, 0);
+                    x64_setcc(&codegen->section_text, 0x9E, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
                 {
-                    x64_setcc(code, 0x9D, 0);
+                    x64_setcc(&codegen->section_text, 0x9D, 0);
                 }
             }
             else
             {
                 if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
                 {
-                    x64_setcc(code, 0x94, 0);
+                    x64_setcc(&codegen->section_text, 0x94, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
                 {
-                    x64_setcc(code, 0x95, 0);
+                    x64_setcc(&codegen->section_text, 0x95, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
                 {
-                    x64_setcc(code, 0x92, 0);
+                    x64_setcc(&codegen->section_text, 0x92, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
                 {
-                    x64_setcc(code, 0x97, 0);
+                    x64_setcc(&codegen->section_text, 0x97, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
                 {
-                    x64_setcc(code, 0x96, 0);
+                    x64_setcc(&codegen->section_text, 0x96, 0);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
                 {
-                    x64_setcc(code, 0x93, 0);
+                    x64_setcc(&codegen->section_text, 0x93, 0);
                 }
             }
         } break;
@@ -763,8 +763,8 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
         case AST_KIND_EXPRESSION_BINOP_ADD:
         case AST_KIND_EXPRESSION_BINOP_MINUS:
         {
-            x64_emit_expression(parser, code, expr->left_expr, target_platform);
-            x64_emit_expression(parser, code, expr->right_expr, target_platform);
+            x64_emit_expression(parser, codegen, expr->left_expr, target_platform);
+            x64_emit_expression(parser, codegen, expr->right_expr, target_platform);
 
             Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
             Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
@@ -778,27 +778,27 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(code, X64_RBX, 0, right_datatype->size);
-            x64_copy_from_stack_to_register(code, X64_RAX, right_stack_size, left_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, left_datatype->size);
 
             // TODO: maybe sign extend arguments
 
             assert(stack_size <= 0xFFFFFFFF);
             assert(total_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) (total_stack_size - stack_size));
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (total_stack_size - stack_size));
             parser->current_stack_offset -= total_stack_size - stack_size;
 
             if (expr->kind == AST_KIND_EXPRESSION_BINOP_ADD)
             {
-                x64_add_registers(code, X64_RAX, X64_RBX, datatype->size);
+                x64_add_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
             }
             else
             {
                 assert(expr->kind == AST_KIND_EXPRESSION_BINOP_MINUS);
-                x64_subtract_registers(code, X64_RAX, X64_RBX, datatype->size);
+                x64_subtract_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
             }
 
-            x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
+            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_FUNCTION_CALL:
@@ -818,7 +818,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
                 u64 return_type_stack_size = return_type->size;
 
                 assert(return_type_stack_size <= 0xFFFFFFFF);
-                x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) return_type_stack_size);
+                x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
                 parser->current_stack_offset += return_type_stack_size;
             }
             else
@@ -831,7 +831,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             For(argument, expr->children.first)
             {
                 // TODO: does the size match the expression?
-                x64_emit_expression(parser, code, argument, target_platform);
+                x64_emit_expression(parser, codegen, argument, target_platform);
 
                 Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
 
@@ -844,15 +844,15 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
                 if ((target_platform == JulsPlatformAndroid) ||
                     (target_platform == JulsPlatformLinux))
                 {
-                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, 60);
-                    x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
-                    x64_syscall(code);
+                    x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 60);
+                    x64_move_indirect_into_register(&codegen->section_text, X64_RDI, X64_RSP, 0);
+                    x64_syscall(&codegen->section_text);
                 }
                 else if (target_platform == JulsPlatformMacOs)
                 {
-                    x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
-                    x64_move_indirect_into_register(code, X64_RDI, X64_RSP, 0);
-                    x64_syscall(code);
+                    x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000001);
+                    x64_move_indirect_into_register(&codegen->section_text, X64_RDI, X64_RSP, 0);
+                    x64_syscall(&codegen->section_text);
                 }
             }
             else if (left->kind == AST_KIND_IDENTIFIER)
@@ -860,9 +860,9 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
                 assert(expr->decl);
                 assert(expr->decl->address != S64MAX);
 
-                string_builder_append_u8(code, 0xE8);
-                s64 jump_offset = string_builder_get_size(code) + 4;
-                string_builder_append_u32le(code, (u32) (expr->decl->address - jump_offset));
+                string_builder_append_u8(&codegen->section_text, 0xE8);
+                s64 jump_offset = string_builder_get_size(&codegen->section_text) + 4;
+                string_builder_append_u32le(&codegen->section_text, (u32) (expr->decl->address - jump_offset));
             }
             else
             {
@@ -870,7 +870,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             }
 
             assert(arguments_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) arguments_stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) arguments_stack_size);
             parser->current_stack_offset -= arguments_stack_size;
         } break;
 
@@ -898,40 +898,40 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
             if (expr->kind != AST_KIND_ASSIGN)
             {
                 assert(stack_size <= 0xFFFFFFFF);
-                x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+                x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
                 parser->current_stack_offset += stack_size;
 
-                x64_copy_from_stack_to_stack(code, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+                x64_copy_from_stack_to_stack(&codegen->section_text, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
             }
 
-            x64_emit_expression(parser, code, expr->right_expr, target_platform);
+            x64_emit_expression(parser, codegen, expr->right_expr, target_platform);
 
             if (expr->kind != AST_KIND_ASSIGN)
             {
-                x64_copy_from_stack_to_register(code, X64_RBX, 0, right_datatype->size);
-                x64_copy_from_stack_to_register(code, X64_RAX, right_stack_size, datatype->size);
+                x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
+                x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, datatype->size);
 
                 // TODO: maybe sign extend arguments
 
                 assert(right_stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) right_stack_size);
+                x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) right_stack_size);
                 parser->current_stack_offset -= right_stack_size;
 
                 if (expr->kind == AST_KIND_PLUS_ASSIGN)
                 {
-                    x64_add_registers(code, X64_RAX, X64_RBX, datatype->size);
+                    x64_add_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
                 }
                 else
                 {
                     assert(expr->kind == AST_KIND_MINUS_ASSIGN);
-                    x64_subtract_registers(code, X64_RAX, X64_RBX, datatype->size);
+                    x64_subtract_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
                 }
 
-                x64_copy_from_register_to_stack(code, 0, X64_RAX, datatype->size);
+                x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
             }
 
             // TODO: does the size match the expression?
-            x64_copy_from_stack_to_stack(code, parser->current_stack_offset - decl->stack_offset, 0, datatype->size);
+            x64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - decl->stack_offset, 0, datatype->size);
         } break;
 
         default:
@@ -943,7 +943,7 @@ x64_emit_expression(Parser *parser, StringBuilder *code, Ast *expr, JulsPlatform
 }
 
 static void
-x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlatform target_platform,
+x64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatform target_platform,
                    Datatype *return_type, u64 return_type_stack_size)
 {
     switch (statement->kind)
@@ -955,7 +955,7 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
             u64 stack_size = datatype->size;
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(code, X64_RSP, (u32) stack_size);
+            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset += stack_size;
             statement->stack_offset = parser->current_stack_offset;
 
@@ -963,39 +963,39 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
 
             if (statement->right_expr)
             {
-                x64_emit_expression(parser, code, statement->right_expr, target_platform);
+                x64_emit_expression(parser, codegen, statement->right_expr, target_platform);
 
                 // TODO: does the size match the expression?
-                x64_copy_from_stack_to_stack(code, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+                x64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
 
                 assert(stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+                x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
                 parser->current_stack_offset -= stack_size;
             }
         } break;
 
         case AST_KIND_IF:
         {
-            x64_emit_expression(parser, code, statement->left_expr, target_platform);
+            x64_emit_expression(parser, codegen, statement->left_expr, target_platform);
 
             assert(statement->left_expr->type_id == parser->basetype_bool);
             Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(code, X64_RAX, 0, datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, datatype->size);
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset -= stack_size;
 
-            x64_compare_al_to_zero(code, X64_RAX);
+            x64_compare_al_to_zero(&codegen->section_text, X64_RAX);
 
             // JE
-            string_builder_append_u8(code, 0x0F);
-            string_builder_append_u8(code, 0x84);
-            s32 *else_patch = string_builder_append_size(code, 4);
-            s64 else_offset = string_builder_get_size(code);
+            string_builder_append_u8(&codegen->section_text, 0x0F);
+            string_builder_append_u8(&codegen->section_text, 0x84);
+            s32 *else_patch = string_builder_append_size(&codegen->section_text, 4);
+            s64 else_offset = string_builder_get_size(&codegen->section_text);
 
             Ast *if_code = statement->children.first;
             Ast *else_code = 0;
@@ -1005,27 +1005,27 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
                 else_code = statement->children.last;
             }
 
-            x64_emit_statement(parser, code, if_code, target_platform, return_type, return_type_stack_size);
+            x64_emit_statement(parser, codegen, if_code, target_platform, return_type, return_type_stack_size);
 
             s32 *end_patch = 0;
 
             if (else_code)
             {
                 // JMP
-                string_builder_append_u8(code, 0xE9);
-                end_patch = string_builder_append_size(code, 4);
+                string_builder_append_u8(&codegen->section_text, 0xE9);
+                end_patch = string_builder_append_size(&codegen->section_text, 4);
             }
 
-            s64 else_target = string_builder_get_size(code);
+            s64 else_target = string_builder_get_size(&codegen->section_text);
             *else_patch = (s32) (else_target - else_offset);
 
             s64 end_offset = else_target;
 
             if (else_code)
             {
-                x64_emit_statement(parser, code, else_code, target_platform, return_type, return_type_stack_size);
+                x64_emit_statement(parser, codegen, else_code, target_platform, return_type, return_type_stack_size);
 
-                s64 end_target = string_builder_get_size(code);
+                s64 end_target = string_builder_get_size(&codegen->section_text);
                 *end_patch = (s32) (end_target - end_offset);
             }
         } break;
@@ -1034,55 +1034,55 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
         {
             push_scope(parser);
 
-            x64_emit_statement(parser, code, statement->decl, target_platform, return_type, return_type_stack_size);
+            x64_emit_statement(parser, codegen, statement->decl, target_platform, return_type, return_type_stack_size);
 
-            s64 start_target = string_builder_get_size(code);
+            s64 start_target = string_builder_get_size(&codegen->section_text);
 
-            x64_emit_expression(parser, code, statement->left_expr, target_platform);
+            x64_emit_expression(parser, codegen, statement->left_expr, target_platform);
 
             assert(statement->left_expr->type_id == parser->basetype_bool);
             Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(code, X64_RAX, 0, datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, datatype->size);
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset -= stack_size;
 
-            x64_compare_al_to_zero(code, X64_RAX);
+            x64_compare_al_to_zero(&codegen->section_text, X64_RAX);
 
             // JE
-            string_builder_append_u8(code, 0x0F);
-            string_builder_append_u8(code, 0x84);
-            s32 *end_patch = string_builder_append_size(code, 4);
-            s64 end_offset = string_builder_get_size(code);
+            string_builder_append_u8(&codegen->section_text, 0x0F);
+            string_builder_append_u8(&codegen->section_text, 0x84);
+            s32 *end_patch = string_builder_append_size(&codegen->section_text, 4);
+            s64 end_offset = string_builder_get_size(&codegen->section_text);
 
-            x64_emit_statement(parser, code, statement->children.first, target_platform, return_type, return_type_stack_size);
-            x64_emit_expression(parser, code, statement->right_expr, target_platform);
+            x64_emit_statement(parser, codegen, statement->children.first, target_platform, return_type, return_type_stack_size);
+            x64_emit_expression(parser, codegen, statement->right_expr, target_platform);
 
             Datatype *right_datatype = get_datatype(&parser->datatypes, statement->right_expr->type_id);
 
             u64 right_stack_size = right_datatype->size;
 
             assert(right_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) right_stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) right_stack_size);
             parser->current_stack_offset -= right_stack_size;
 
-            string_builder_append_u8(code, 0xE9);
-            s32 *start_patch = string_builder_append_size(code, 4);
-            s64 start_offset = string_builder_get_size(code);
+            string_builder_append_u8(&codegen->section_text, 0xE9);
+            s32 *start_patch = string_builder_append_size(&codegen->section_text, 4);
+            s64 start_offset = string_builder_get_size(&codegen->section_text);
             *start_patch = (start_target - start_offset);
 
-            s64 end_target = string_builder_get_size(code);
+            s64 end_target = string_builder_get_size(&codegen->section_text);
             *end_patch = (s32) (end_target - end_offset);
 
             u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
             pop_scope(parser);
 
             assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
             parser->current_stack_offset -= stack_allocated;
         } break;
 
@@ -1090,12 +1090,12 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
         {
             assert(statement->left_expr);
 
-            x64_emit_expression(parser, code, statement->left_expr, target_platform);
+            x64_emit_expression(parser, codegen, statement->left_expr, target_platform);
 
-            x64_copy_from_stack_to_stack(code, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
+            x64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
 
             assert(return_type_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) return_type_stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
             parser->current_stack_offset -= return_type_stack_size;
 
             u64 stack_allocated = 0;
@@ -1107,9 +1107,9 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
             }
 
             assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
 
-            x64_ret(code);
+            x64_ret(&codegen->section_text);
         } break;
 
         case AST_KIND_BLOCK:
@@ -1118,38 +1118,38 @@ x64_emit_statement(Parser *parser, StringBuilder *code, Ast *statement, JulsPlat
 
             For(stmt, statement->children.first)
             {
-                x64_emit_statement(parser, code, stmt, target_platform, return_type, return_type_stack_size);
+                x64_emit_statement(parser, codegen, stmt, target_platform, return_type, return_type_stack_size);
             }
 
             u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
             pop_scope(parser);
 
             assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
             parser->current_stack_offset -= stack_allocated;
         } break;
 
         default:
         {
-            x64_emit_expression(parser, code, statement, target_platform);
+            x64_emit_expression(parser, codegen, statement, target_platform);
 
             Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
 
             u64 stack_size = datatype->size;
 
             assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_size);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
             parser->current_stack_offset -= stack_size;
         } break;
     }
 }
 
 static void
-x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform target_platform)
+x64_emit_function(Parser *parser, Codegen *codegen, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
-    func->address = string_builder_get_size(code);
+    func->address = string_builder_get_size(&codegen->section_text);
 
     parser->current_stack_offset = 0;
     parser->stack_allocated_index = -1;
@@ -1175,7 +1175,7 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
 
     For(statement, func->children.first)
     {
-        x64_emit_statement(parser, code, statement, target_platform, return_type, return_type_stack_size);
+        x64_emit_statement(parser, codegen, statement, target_platform, return_type, return_type_stack_size);
     }
 
     if (!func->type_def)
@@ -1186,57 +1186,57 @@ x64_emit_function(Parser *parser, StringBuilder *code, Ast *func, JulsPlatform t
         pop_scope(parser);
 
         assert(stack_allocated <= 0xFFFFFFFF);
-        x64_add_immediate32_unsigned_to_register(code, X64_RSP, (u32) stack_allocated);
+        x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
 
-        x64_ret(code);
+        x64_ret(&codegen->section_text);
     }
 }
 
 static void
-generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, JulsPlatform target_platform)
+generate_x64(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform)
 {
     String entry_point_name = S("main");
 
     u64 jump_location = 0;
     s32 *jump_patch = 0;
 
-    u64 _start_offset = string_builder_get_size(code);
+    u64 _start_offset = string_builder_get_size(&codegen->section_text);
 
     if ((target_platform == JulsPlatformAndroid) ||
         (target_platform == JulsPlatformLinux))
     {
         // call main
-        string_builder_append_u8(code, 0xE8);
-        jump_patch = string_builder_append_size(code, 4);
-        jump_location = string_builder_get_size(code);
+        string_builder_append_u8(&codegen->section_text, 0xE8);
+        jump_patch = string_builder_append_size(&codegen->section_text, 4);
+        jump_location = string_builder_get_size(&codegen->section_text);
 
         // mov rax, 231
-        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 231);
+        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 231);
 
         // mov rdi, 0
-        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 0);
+        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RDI, 0);
 
         // syscall
-        x64_syscall(code);
+        x64_syscall(&codegen->section_text);
     }
     else if (target_platform == JulsPlatformMacOs)
     {
         // call main
-        string_builder_append_u8(code, 0xE8);
-        jump_patch = string_builder_append_size(code, 4);
-        jump_location = string_builder_get_size(code);
+        string_builder_append_u8(&codegen->section_text, 0xE8);
+        jump_patch = string_builder_append_size(&codegen->section_text, 4);
+        jump_location = string_builder_get_size(&codegen->section_text);
 
         // mov rax, 0x02000001
-        x64_move_immediate32_unsigned_into_register(code, X64_RAX, 0x02000001);
+        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000001);
 
         // mov rdi, 0
-        x64_move_immediate32_unsigned_into_register(code, X64_RDI, 0);
+        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RDI, 0);
 
         // syscall
-        x64_syscall(code);
+        x64_syscall(&codegen->section_text);
     }
 
-    u64 _start_size = string_builder_get_size(code) - _start_offset;
+    u64 _start_size = string_builder_get_size(&codegen->section_text) - _start_offset;
 
     array_append(symbol_table, ((SymbolEntry) { .name = S("_start"), .offset = _start_offset, .size = _start_size }));
 
@@ -1246,16 +1246,16 @@ generate_x64(Parser *parser, StringBuilder *code, SymbolTable *symbol_table, Jul
     {
         if (decl->kind == AST_KIND_FUNCTION_DECLARATION)
         {
-            u64 offset = string_builder_get_size(code);
+            u64 offset = string_builder_get_size(&codegen->section_text);
 
             if (strings_are_equal(entry_point_name, decl->name))
             {
                 jump_target = offset;
             }
 
-            x64_emit_function(parser, code, decl, target_platform);
+            x64_emit_function(parser, codegen, decl, target_platform);
 
-            u64 size = string_builder_get_size(code) - offset;
+            u64 size = string_builder_get_size(&codegen->section_text) - offset;
 
             array_append(symbol_table, ((SymbolEntry) { .name = decl->name, .offset = offset, .size = size }));
         }
