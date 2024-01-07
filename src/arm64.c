@@ -592,6 +592,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             u64 instruction_offset = string_builder_get_size(&codegen->section_text);
             void *patch_addr = string_builder_append_size(&codegen->section_text, 8);
 
+            // STP
             u32 inst = 0xA9000000 | ((u32) ARM64_R1 << 10) | ((u32) ARM64_SP << 5) | ARM64_R0;
             string_builder_append_u32le(&codegen->section_text, inst);
 

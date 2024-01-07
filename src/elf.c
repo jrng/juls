@@ -82,6 +82,14 @@ generate_elf(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, 
 
     string_builder_append_builder(builder, codegen.section_cstring);
 
+    u64 current_size = string_builder_get_size(builder);
+    u64 padding_size = Align(current_size, 4) - current_size;
+
+    for (u64 i = 0; i < padding_size; i += 1)
+    {
+        string_builder_append_u8(builder, 0);
+    }
+
     u64 cstring_end = string_builder_get_size(builder);
 
     u64 cstring_vaddr = vaddr;
@@ -123,15 +131,16 @@ generate_elf(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, 
 
             if (target_architecture == JulsArchitectureArm64)
             {
-#if 1
-                assert(!"not tested");
-#else
-                u64 page_count = (string_address - instruction_address) / 4096;
+                u64 string_page = string_address / 4096;
+                u64 instruction_page = instruction_address / 4096;
+
+                s64 page_count = string_page - instruction_page;
                 u64 offset = string_address & 0xFFF;
 
+                // ADRP
                 *((u32 *) patch->patch + 0) = 0x90000000 | ((page_count & 0x3) << 29) | ((page_count & 0x1FFFFC) << 3) | ARM64_R1;
+                // ADD (immediate)
                 *((u32 *) patch->patch + 1) = 0x91000000 | ((u32) offset << 10) | (ARM64_R1 << 5) | ARM64_R1;
-#endif
             }
             else if (target_architecture == JulsArchitectureX86_64)
             {

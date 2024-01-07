@@ -301,7 +301,10 @@ generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table
 
             if (target_architecture == JulsArchitectureArm64)
             {
-                u64 page_count = (string_address - instruction_address) / 4096;
+                u64 string_page = string_address / 4096;
+                u64 instruction_page = instruction_address / 4096;
+
+                s64 page_count = string_page - instruction_page;
                 u64 offset = string_address & 0xFFF;
 
                 *((u32 *) patch->patch + 0) = 0x90000000 | ((page_count & 0x3) << 29) | ((page_count & 0x1FFFFC) << 3) | ARM64_R1;
@@ -309,7 +312,7 @@ generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table
             }
             else if (target_architecture == JulsArchitectureX86_64)
             {
-                assert(!"not implemented");
+                *(s32 *) patch->patch = (s32) ((s64) string_address - (s64) instruction_address);
             }
         }
     }
