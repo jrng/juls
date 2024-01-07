@@ -938,7 +938,6 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
                     arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
 
                     Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
-
                     Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
 
                     u64 left_stack_size = Align(left_datatype->size, 16);
