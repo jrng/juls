@@ -55,16 +55,6 @@ x64_pop_register(StringBuilder *builder, X64Register reg)
 }
 
 static inline void
-x64_move_indirect_into_register(StringBuilder *builder, X64Register dst, X64Register base_reg, u8 offset)
-{
-    string_builder_append_u8(builder, REX_W);
-    string_builder_append_u8(builder, 0x8B);
-    string_builder_append_u8(builder, ModRM(1, dst, base_reg));
-    string_builder_append_u8(builder, SIB(0, base_reg, base_reg));
-    string_builder_append_u8(builder, offset);
-}
-
-static inline void
 x64_add_immediate32_unsigned_to_register(StringBuilder *builder, X64Register reg, u32 value)
 {
     if (value <= 0xFF)
@@ -987,9 +977,7 @@ x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform ta
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
-                        // TODO:
-                        assert(!"correct syscall number");
-                        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000001);
+                        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000004);
                         x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
                         x64_copy_from_stack_to_register(&codegen->section_text, X64_RSI, 4, 8);
                         x64_copy_from_stack_to_register(&codegen->section_text, X64_RDX, 12, 8);
