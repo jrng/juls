@@ -34,6 +34,29 @@ can_implicitly_cast_to(DatatypeTable *table, DatatypeId from_type_id, DatatypeId
     return false;
 }
 
+static bool
+can_cast_to(DatatypeTable *table, DatatypeId from_type_id, DatatypeId to_type_id)
+{
+    if (from_type_id == to_type_id)
+    {
+        return true;
+    }
+
+    Datatype *from_type = get_datatype(table, from_type_id);
+    Datatype *to_type = get_datatype(table, to_type_id);
+
+    if ((from_type->kind == DATATYPE_INTEGER) && (to_type->kind == DATATYPE_INTEGER))
+    {
+        return true;
+    }
+    else
+    {
+        assert(!"not implemented");
+    }
+
+    return false;
+}
+
 static void type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id);
 
 static void
@@ -270,86 +293,57 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
 
             if (left_expr->kind == AST_KIND_IDENTIFIER)
             {
-                if (strings_are_equal(left_expr->name, S("exit")))
+                expr->decl = find_function_declaration_by_name(parser->global_declarations.children.first, left_expr->name);
+
+                if (expr->decl)
                 {
+                    assert(expr->decl->type_id);
+
+                    s32 parameter_count = ast_list_count(&expr->decl->parameters);
                     s32 argument_count = ast_list_count(&expr->children);
 
-                    if (argument_count == 1)
+                    if (argument_count == parameter_count)
                     {
+                        Ast *parameter = expr->decl->parameters.first;
                         Ast *argument = expr->children.first;
 
-                        type_check_expression(parser, argument, parser->basetype_s64);
+                        s32 parameter_position = 1;
 
-                        if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_s64) &&
-                            !can_implicitly_cast_to(&parser->datatypes, argument->type_id, parser->basetype_u64))
+                        while (parameter)
                         {
-                            report_error(parser->lexer.input, left_expr->source_location,
-                                         "function 'exit' expects type s64/u64 for parameter 1 ('return_code')");
+                            type_check_expression(parser, argument, parameter->type_id);
+
+                            if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parameter->type_id))
+                            {
+                                Datatype *parameter_type = get_datatype(&parser->datatypes, parameter->type_id);
+
+                                report_error(parser->lexer.input, left_expr->source_location,
+                                             "function '%.*s' expects type %.*s for parameter %d ('%.*s')",
+                                             (int) left_expr->name.count, left_expr->name.data,
+                                             (int) parameter_type->name.count, parameter_type->name.data,
+                                             parameter_position,
+                                             (int) parameter->name.count, parameter->name.data);
+                            }
+
+                            parameter = parameter->next;
+                            argument = argument->next;
+
+                            parameter_position += 1;
                         }
                     }
                     else
                     {
                         report_error(parser->lexer.input, left_expr->source_location,
-                                     "function 'exit' expects 1 argument, but was given %d",
-                                     argument_count);
+                                     "function '%.*s' expects %d arguments, but was given %d",
+                                     (int) left_expr->name.count, left_expr->name.data,
+                                     parameter_count, argument_count);
                     }
 
-                    expr->type_id = parser->basetype_void;
+                    expr->type_id = expr->decl->type_id;
                 }
                 else
                 {
-                    expr->decl = find_function_declaration_by_name(parser->global_declarations.children.first, left_expr->name);
-
-                    if (expr->decl)
-                    {
-                        assert(expr->decl->type_id);
-
-                        s32 parameter_count = ast_list_count(&expr->decl->parameters);
-                        s32 argument_count = ast_list_count(&expr->children);
-
-                        if (argument_count == parameter_count)
-                        {
-                            Ast *parameter = expr->decl->parameters.first;
-                            Ast *argument = expr->children.first;
-
-                            s32 parameter_position = 1;
-
-                            while (parameter)
-                            {
-                                type_check_expression(parser, argument, parameter->type_id);
-
-                                if (!can_implicitly_cast_to(&parser->datatypes, argument->type_id, parameter->type_id))
-                                {
-                                    Datatype *parameter_type = get_datatype(&parser->datatypes, parameter->type_id);
-
-                                    report_error(parser->lexer.input, left_expr->source_location,
-                                                 "function '%.*s' expects type %.*s for parameter %d ('%.*s')",
-                                                 (int) left_expr->name.count, left_expr->name.data,
-                                                 (int) parameter_type->name.count, parameter_type->name.data,
-                                                 parameter_position,
-                                                 (int) parameter->name.count, parameter->name.data);
-                                }
-
-                                parameter = parameter->next;
-                                argument = argument->next;
-
-                                parameter_position += 1;
-                            }
-                        }
-                        else
-                        {
-                            report_error(parser->lexer.input, left_expr->source_location,
-                                         "function '%.*s' expects %d arguments, but was given %d",
-                                         (int) left_expr->name.count, left_expr->name.data,
-                                         parameter_count, argument_count);
-                        }
-
-                        expr->type_id = expr->decl->type_id;
-                    }
-                    else
-                    {
-                        report_error(parser->lexer.input, left_expr->source_location, "undeclared identifier '%.*s'", (int) left_expr->name.count, left_expr->name.data);
-                    }
+                    report_error(parser->lexer.input, left_expr->source_location, "undeclared identifier '%.*s'", (int) left_expr->name.count, left_expr->name.data);
                 }
             }
             else
@@ -429,6 +423,22 @@ type_check_expression(Parser *parser, Ast *expr, DatatypeId preferred_type_id)
                              "type %.*s has no member '%.*s'",
                              (int) datatype->name.count, datatype->name.data,
                              (int) expr->name.count, expr->name.data);
+            }
+        } break;
+
+        case AST_KIND_CAST:
+        {
+            resolve_type(parser, expr->type_def);
+
+            expr->type_id = expr->type_def->type_id;
+
+            // TODO: should we give the cast type as a hint to the expression?
+            type_check_expression(parser, expr->left_expr, 0);
+
+            if (!can_cast_to(&parser->datatypes, expr->left_expr->type_id, expr->type_id))
+            {
+                // TODO: error
+                fprintf(stderr, "error: cannot cast to type\n");
             }
         } break;
 
@@ -540,7 +550,7 @@ type_checking(Parser *parser)
 {
     For(decl, parser->global_declarations.children.first)
     {
-        print_ast(decl, 0);
+        // print_ast(decl, 0);
 
         // TODO: check for redefinition
 

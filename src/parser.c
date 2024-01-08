@@ -552,19 +552,7 @@ parse_postfix_expression(Parser *parser)
 static Ast *
 parse_unary(Parser *parser)
 {
-    if (match_token(parser, TOKEN_KEYWORD_SIZE_OF))
-    {
-        Ast *expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF, parser->previous.lexeme);
-
-        expect_token(parser, '(');
-
-        ast_set_type_def(expr, parse_type_definition(parser));
-
-        expect_token(parser, ')');
-
-        return expr;
-    }
-    else if (match_token(parser, TOKEN_UNARY_NOT) || match_token(parser, TOKEN_BINOP_MINUS))
+    if (match_token(parser, TOKEN_UNARY_NOT) || match_token(parser, TOKEN_BINOP_MINUS))
     {
         AstKind ast_kind;
 
@@ -581,6 +569,32 @@ parse_unary(Parser *parser)
         Ast *expr = append_ast(&parser->ast_nodes, ast_kind, parser->previous.lexeme);
 
         ast_set_left_expr(expr, parse_unary(parser));
+
+        return expr;
+    }
+    else if (match_token(parser, TOKEN_KEYWORD_CAST))
+    {
+        Ast *expr = append_ast(&parser->ast_nodes, AST_KIND_CAST, parser->previous.lexeme);
+
+        expect_token(parser, '(');
+
+        ast_set_type_def(expr, parse_type_definition(parser));
+
+        expect_token(parser, ')');
+
+        ast_set_left_expr(expr, parse_unary(parser));
+
+        return expr;
+    }
+    else if (match_token(parser, TOKEN_KEYWORD_SIZE_OF))
+    {
+        Ast *expr = append_ast(&parser->ast_nodes, AST_KIND_QUERY_SIZE_OF, parser->previous.lexeme);
+
+        expect_token(parser, '(');
+
+        ast_set_type_def(expr, parse_type_definition(parser));
+
+        expect_token(parser, ')');
 
         return expr;
     }

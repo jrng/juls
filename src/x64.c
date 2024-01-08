@@ -660,6 +660,44 @@ x64_compare_al_to_zero(StringBuilder *builder, X64Register reg)
 }
 
 static void
+x64_emit_cast(Parser *parser, Codegen *codegen, DatatypeId from_type_id, DatatypeId to_type_id)
+{
+    if (from_type_id == to_type_id)
+    {
+        return;
+    }
+
+    Datatype *from_type = get_datatype(&parser->datatypes, from_type_id);
+    Datatype *to_type = get_datatype(&parser->datatypes, to_type_id);
+
+    u64 from_type_stack_size = from_type->size;
+    u64 to_type_stack_size = to_type->size;
+
+    if ((from_type->kind == DATATYPE_INTEGER) && (to_type->kind == DATATYPE_INTEGER))
+    {
+        if (from_type->size > to_type->size)
+        {
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, from_type->size);
+
+            assert(from_type_stack_size <= 0xFFFFFFFF);
+            assert(to_type_stack_size <= 0xFFFFFFFF);
+            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (from_type_stack_size - to_type_stack_size));
+            parser->current_stack_offset -= from_type_stack_size - to_type_stack_size;
+
+            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, to_type->size);
+        }
+        else if (from_type->size < to_type->size)
+        {
+            assert(!"not implemented");
+        }
+    }
+    else
+    {
+        assert(!"not implemented");
+    }
+}
+
+static void
 x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform target_platform)
 {
     switch (expr->kind)
@@ -913,20 +951,14 @@ x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform ta
 
             if (left->kind == AST_KIND_IDENTIFIER)
             {
-                if (strings_are_equal(left->name, S("exit")))
-                {
-                }
-                else
-                {
-                    assert(expr->decl);
+                assert(expr->decl);
 
-                    Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
-                    u64 return_type_stack_size = return_type->size;
+                Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
+                u64 return_type_stack_size = return_type->size;
 
-                    assert(return_type_stack_size <= 0xFFFFFFFF);
-                    x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
-                    parser->current_stack_offset += return_type_stack_size;
-                }
+                assert(return_type_stack_size <= 0xFFFFFFFF);
+                x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
+                parser->current_stack_offset += return_type_stack_size;
             }
             else
             {
@@ -954,13 +986,13 @@ x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform ta
                         (target_platform == JulsPlatformLinux))
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 60);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
                         x64_syscall(&codegen->section_text);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000001);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
                         x64_syscall(&codegen->section_text);
                     }
                 }
@@ -1104,6 +1136,12 @@ x64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform ta
             {
                 assert(!"not supported");
             }
+        } break;
+
+        case AST_KIND_CAST:
+        {
+            x64_emit_expression(parser, codegen, expr->left_expr, target_platform);
+            x64_emit_cast(parser, codegen, expr->left_expr->type_id, expr->type_id);
         } break;
 
         default:

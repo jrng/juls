@@ -517,6 +517,47 @@ arm64_compare_registers(StringBuilder *builder, Arm64Register a_reg, Arm64Regist
 }
 
 static void
+arm64_emit_cast(Parser *parser, Codegen *codegen, DatatypeId from_type_id, DatatypeId to_type_id)
+{
+    if (from_type_id == to_type_id)
+    {
+        return;
+    }
+
+    Datatype *from_type = get_datatype(&parser->datatypes, from_type_id);
+    Datatype *to_type = get_datatype(&parser->datatypes, to_type_id);
+
+    u64 from_type_stack_size = Align(from_type->size, 16);
+    u64 to_type_stack_size = Align(to_type->size, 16);
+
+    if ((from_type->kind == DATATYPE_INTEGER) && (to_type->kind == DATATYPE_INTEGER))
+    {
+        if (from_type->size > to_type->size)
+        {
+            if (from_type_stack_size != to_type_stack_size)
+            {
+                arm64_copy_from_stack_to_register(&codegen->section_text, ARM64_R0, 0, from_type->size);
+
+                assert(from_type_stack_size <= 0xFFFF);
+                assert(to_type_stack_size <= 0xFFFF);
+                arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) (from_type_stack_size - to_type_stack_size));
+                parser->current_stack_offset -= from_type_stack_size - to_type_stack_size;
+
+                arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, to_type->size);
+            }
+        }
+        else if (from_type->size < to_type->size)
+        {
+            assert(!"not implemented");
+        }
+    }
+    else
+    {
+        assert(!"not implemented");
+    }
+}
+
+static void
 arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform target_platform)
 {
     switch (expr->kind)
@@ -778,20 +819,14 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
             if (left->kind == AST_KIND_IDENTIFIER)
             {
-                if (strings_are_equal(left->name, S("exit")))
-                {
-                }
-                else
-                {
-                    assert(expr->decl);
+                assert(expr->decl);
 
-                    Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
-                    u64 return_type_stack_size = Align(return_type->size, 16);
+                Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
+                u64 return_type_stack_size = Align(return_type->size, 16);
 
-                    assert(return_type_stack_size <= 0xFFFF);
-                    arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
-                    parser->current_stack_offset += return_type_stack_size;
-                }
+                assert(return_type_stack_size <= 0xFFFF);
+                arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
+                parser->current_stack_offset += return_type_stack_size;
             }
             else
             {
@@ -969,6 +1004,12 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             {
                 assert(!"not supported");
             }
+        } break;
+
+        case AST_KIND_CAST:
+        {
+            arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
+            arm64_emit_cast(parser, codegen, expr->left_expr->type_id, expr->type_id);
         } break;
 
         default:

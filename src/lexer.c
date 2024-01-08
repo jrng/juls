@@ -39,6 +39,7 @@ typedef enum
     TOKEN_RIGHT_ARROW       = /* -> */ 36,
     TOKEN_BINOP_MOD         = '%', //  37
     TOKEN_BINOP_AND         = '&', //  38
+    TOKEN_KEYWORD_CAST      =          39,
     TOKEN_LEFT_PAREN        = '(', //  40
     TOKEN_RIGHT_PAREN       = ')', //  41
     TOKEN_BINOP_MUL         = '*', //  42
@@ -252,6 +253,10 @@ identifier(Lexer *lexer)
     else if (strings_are_equal(ident, S("type_of")))
     {
         return make_token(*lexer, TOKEN_KEYWORD_TYPE_OF);
+    }
+    else if (strings_are_equal(ident, S("cast")))
+    {
+        return make_token(*lexer, TOKEN_KEYWORD_CAST);
     }
 
     return make_token(*lexer, TOKEN_IDENTIFIER);

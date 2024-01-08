@@ -75,6 +75,7 @@ typedef enum
     AST_KIND_BLOCK                              = 37,
     AST_KIND_MEMBER                             = 38,
     AST_KIND_POINTER                            = 39,
+    AST_KIND_CAST                               = 40,
 } AstKind;
 
 typedef struct Ast Ast;

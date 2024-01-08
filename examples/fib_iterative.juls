@@ -1,3 +1,5 @@
+exit :: (return_value: s32) {}
+
 fib :: (n: u64) -> u64
 {
     a := 0;
@@ -17,5 +19,5 @@ main :: ()
 {
     // This gets truncated to a byte,
     // so the return value should be 225.
-    exit(fib(47));
+    exit(cast(s32) fib(47));
 }
