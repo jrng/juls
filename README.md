@@ -36,6 +36,7 @@ is planned.
 ### ELF
 
 - Executable and Linking Format (ELF) Specification, Version 1.2: [https://refspecs.linuxbase.org/elf/elf.pdf](https://refspecs.linuxbase.org/elf/elf.pdf)
+- ELF64 hello world: [https://tuket.github.io/notes/asm/elf64_hello_world/](https://tuket.github.io/notes/asm/elf64_hello_world/)
 
 ### Mach-O
 
