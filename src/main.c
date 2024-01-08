@@ -408,8 +408,6 @@ typedef struct
 static void
 generate_code(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform, JulsArchitecture target_architecture)
 {
-    // linux syscalls: https://syscall.sh
-
     if (target_architecture == JulsArchitectureArm64)
     {
         generate_arm64(parser, codegen, symbol_table, target_platform);
