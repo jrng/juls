@@ -320,48 +320,48 @@ generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table
     // THIS MUST BE AT THE END OF THE FILE
     u64 linkedit_start = string_builder_get_size(builder);
 
-    StringBuilder symbol_table_section;
-    initialize_string_builder(&symbol_table_section, &default_allocator);
+    StringBuilder string_table;
+    initialize_string_builder(&string_table, &default_allocator);
 
-    u64 string_table_start = string_builder_get_size(builder);
+    u64 symbol_table_start = string_builder_get_size(builder);
 
-    string_builder_append_u8(builder, 0);
-    string_builder_append_string(builder, S("__mh_execute_header"));
-    string_builder_append_u8(builder, 0);
+    string_builder_append_u8(&string_table, 0);
+    string_builder_append_string(&string_table, S("__mh_execute_header"));
+    string_builder_append_u8(&string_table, 0);
 
-    string_builder_append_u32le(&symbol_table_section, 1);
-    string_builder_append_u8(&symbol_table_section, 0x0F); // symbol type
-    string_builder_append_u8(&symbol_table_section, 1); // section number
-    string_builder_append_u16le(&symbol_table_section, 0x10); // data info
-    string_builder_append_u64le(&symbol_table_section, vm_base); // symbol address
+    string_builder_append_u32le(builder, 1);
+    string_builder_append_u8(builder, 0x0F); // symbol type
+    string_builder_append_u8(builder, 1); // section number
+    string_builder_append_u16le(builder, 0x10); // data info
+    string_builder_append_u64le(builder, vm_base); // symbol address
 
     for (s32 i = 0; i < symbol_table.count; i += 1)
     {
         SymbolEntry *entry = symbol_table.items + i;
-        u32 name_offset = (u32) (string_builder_get_size(builder) - string_table_start);
+        u32 name_offset = (u32) string_builder_get_size(&string_table);
 
-        string_builder_append_u32le(&symbol_table_section, name_offset);
-        string_builder_append_u8(&symbol_table_section, 0x0F); // symbol type
-        string_builder_append_u8(&symbol_table_section, 1); // section number
-        string_builder_append_u16le(&symbol_table_section, 0); // data info
-        string_builder_append_u64le(&symbol_table_section, vm_base + text_start + entry->offset); // symbol address
+        string_builder_append_u32le(builder, name_offset);
+        string_builder_append_u8(builder, 0x0F); // symbol type
+        string_builder_append_u8(builder, 1); // section number
+        string_builder_append_u16le(builder, 0); // data info
+        string_builder_append_u64le(builder, vm_base + text_start + entry->offset); // symbol address
 
-        string_builder_append_string(builder, entry->name);
-        string_builder_append_u8(builder, 0);
+        string_builder_append_string(&string_table, entry->name);
+        string_builder_append_u8(&string_table, 0);
     }
+
+    u64 symbol_table_end = string_builder_get_size(builder);
+
+    *symbol_table_offset = (u32) symbol_table_start;
+
+    u64 string_table_start = string_builder_get_size(builder);
+
+    string_builder_append_builder(builder, string_table);
 
     u64 string_table_end = string_builder_get_size(builder);
 
     *string_table_offset = (u32) string_table_start;
     *string_table_size = (u32) (string_table_end - string_table_start);
-
-    u64 symbol_table_start = string_builder_get_size(builder);
-
-    string_builder_append_builder(builder, symbol_table_section);
-
-    u64 symbol_table_end = string_builder_get_size(builder);
-
-    *symbol_table_offset = (u32) symbol_table_start;
 
     u64 linkedit_end = string_builder_get_size(builder);
 
