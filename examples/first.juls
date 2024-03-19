@@ -1,4 +1,4 @@
-exit :: (return_value: s32) {}
+#import "basic";
 
 test :: (a: s64) -> s64
 {

@@ -48,6 +48,8 @@ typedef enum
     TOKEN_BINOP_MINUS       = '-', //  45
     TOKEN_DOT               = '.', //  46
     TOKEN_BINOP_DIV         = '/', //  47
+    TOKEN_DIRECTIVE_LOAD    =          48,
+    TOKEN_DIRECTIVE_IMPORT  =          49,
     TOKEN_COLON             = ':', //  58
     TOKEN_SEMICOLON         = ';', //  59
     TOKEN_LESS              = '<', //  60
@@ -74,6 +76,8 @@ typedef struct
 {
     s64 start;
     s64 current;
+
+    u16 current_file_index;
 
     String input;
 } Lexer;
@@ -194,6 +198,7 @@ make_token(Lexer lexer, u8 token_type)
     Token token;
 
     token.type = token_type;
+    token.file_index = lexer.current_file_index;
     token.lexeme = make_string(lexer.current - lexer.start, lexer.input.data + lexer.start);
 
     return token;
@@ -306,6 +311,29 @@ string(Lexer *lexer)
 }
 
 static Token
+directive(Lexer *lexer)
+{
+    while (!is_at_end(*lexer) && is_alpha(peek_character(*lexer)))
+    {
+        eat_character(lexer);
+    }
+
+    String ident = make_string(lexer->current - lexer->start, lexer->input.data + lexer->start);
+
+    if (strings_are_equal(ident, S("#load")))
+    {
+        return make_token(*lexer, TOKEN_DIRECTIVE_LOAD);
+    }
+    else if (strings_are_equal(ident, S("#import")))
+    {
+        return make_token(*lexer, TOKEN_DIRECTIVE_IMPORT);
+    }
+
+    // TODO: error message
+    return make_token(*lexer, TOKEN_ERROR);
+}
+
+static Token
 get_next_token(Lexer *lexer)
 {
     skip_whitespace(lexer);
@@ -333,6 +361,7 @@ get_next_token(Lexer *lexer)
     {
         case '!': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_NOT_EQUAL : TOKEN_UNARY_NOT);
         case '"': return string(lexer);
+        case '#': return directive(lexer);
         case '%': return make_token(*lexer, TOKEN_BINOP_MOD);
         case '&': return make_token(*lexer, matches_character(lexer, '=') ? TOKEN_AND_EQUAL : TOKEN_BINOP_AND);
         case '(': return make_token(*lexer, TOKEN_LEFT_PAREN);

@@ -97,6 +97,42 @@ static Allocator default_allocator;
     } while (0);
 
 #include "strings.c"
+
+typedef struct
+{
+    String full_path;
+    String content;
+} SourceFile;
+
+typedef struct
+{
+    s32 count;
+    s32 allocated;
+    SourceFile *items;
+} SourceFileArray;
+
+typedef struct
+{
+    u16 file_index;
+    s64 index;
+    s64 count;
+} SourceLocation;
+
+static void
+add_file_to_load(StringArray *files, String full_path)
+{
+    for (s32 index = 0; index < files->count; index += 1)
+    {
+        String filename = files->items[index];
+        if (strings_are_equal(full_path, filename))
+        {
+            return;
+        }
+    }
+
+    array_append(files, full_path);
+}
+
 #include "lexer.c"
 #include "ast.c"
 #include "parser.c"
@@ -365,6 +401,30 @@ read_entire_file(Allocator *allocator, String filename)
     return result;
 }
 
+static u16
+load_file(SourceFileArray *source_files, String full_path)
+{
+    for (s32 index = 0; index < source_files->count; index += 1)
+    {
+        SourceFile *file = source_files->items + index;
+        if (strings_are_equal(full_path, file->full_path))
+        {
+            return (u16) index;
+        }
+    }
+
+#if 0
+    fprintf(stderr, "load file '%.*s'\n", (int) full_path.count, full_path.data);
+#endif
+
+    u16 file_index = (u16) source_files->count;
+    String content = read_entire_file(&default_allocator, full_path);
+
+    array_append(source_files, ((SourceFile) { .full_path = full_path, .content = content }));
+
+    return file_index;
+}
+
 typedef struct
 {
     String name;
@@ -378,6 +438,20 @@ typedef struct
     s32 allocated;
     SymbolEntry *items;
 } SymbolTable;
+
+typedef struct
+{
+    void *patch;
+    u64 instruction_offset;
+    Ast *function_decl;
+} FunctionCallPatch;
+
+typedef struct
+{
+    s32 count;
+    s32 allocated;
+    FunctionCallPatch *items;
+} FunctionCallPatchArray;
 
 typedef struct
 {
@@ -397,6 +471,7 @@ typedef struct
 {
     StringBuilder section_text;
     StringBuilder section_cstring;
+    FunctionCallPatchArray function_call_patches;
     PatchArray patches;
 } Codegen;
 
@@ -406,17 +481,17 @@ typedef struct
 #include "macho.c"
 
 static void
-generate_code(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform, JulsArchitecture target_architecture)
+generate_code(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform, JulsArchitecture target_architecture)
 {
     if (target_architecture == JulsArchitectureArm64)
     {
-        generate_arm64(parser, codegen, symbol_table, target_platform);
+        generate_arm64(compiler, codegen, symbol_table, target_platform);
     }
     else
     {
         assert(target_architecture == JulsArchitectureX86_64);
 
-        generate_x64(parser, codegen, symbol_table, target_platform);
+        generate_x64(compiler, codegen, symbol_table, target_platform);
     }
 }
 
@@ -550,60 +625,87 @@ int main(s32 argument_count, char **arguments)
         output_filename = S("output");
     }
 
-    String input_file = read_entire_file(&default_allocator, input_filename);
+    Compiler compiler;
 
-    Parser parser;
-    parser.has_error = false;
-    parser.lexer.start = 0;
-    parser.lexer.current = 0;
-    parser.lexer.input = input_file;
-    parser.ast_nodes.first_bucket = 0;
-    parser.ast_nodes.last_bucket = 0;
-    parser.global_declarations.kind = AST_KIND_GLOBAL_SCOPE;
-    parser.global_declarations.parent = 0;
-    parser.global_declarations.children.first = 0;
-    parser.global_declarations.children.last = 0;
+    compiler.parser.has_error = false;
+    compiler.parser.lexer.start = 0;
+    compiler.parser.lexer.current = 0;
+    compiler.parser.lexer.input = make_string(0, 0);
+    compiler.ast_nodes.first_bucket = 0;
+    compiler.ast_nodes.last_bucket = 0;
+    compiler.global_declarations.kind = AST_KIND_GLOBAL_SCOPE;
+    compiler.global_declarations.parent = 0;
+    compiler.global_declarations.children.first = 0;
+    compiler.global_declarations.children.last = 0;
 
-    parser.datatypes.count = 0;
-    parser.datatypes.allocated = 0;
-    parser.datatypes.items = 0;
+    compiler.datatypes.count = 0;
+    compiler.datatypes.allocated = 0;
+    compiler.datatypes.items = 0;
 
     // index 0 is the invalid datatype
-    array_append(&parser.datatypes, ((Datatype) { 0 }));
+    array_append(&compiler.datatypes, ((Datatype) { 0 }));
 
-    parser.basetype_void = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_VOID, .flags = 0, .ref = 0, .name = S("void"), .size = 0 }));
+    compiler.basetype_void = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_VOID, .flags = 0, .ref = 0, .name = S("void"), .size = 0 }));
 
-    parser.basetype_bool = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .ref = 0, .name = S("bool"), .size = 1 }));
+    compiler.basetype_bool = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_BOOLEAN, .flags = 0, .ref = 0, .name = S("bool"), .size = 1 }));
 
-    parser.basetype_s8 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s8"), .size = 1 }));
-    parser.basetype_s16 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s16"), .size = 2 }));
-    parser.basetype_s32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s32"), .size = 4 }));
-    parser.basetype_s64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s64"), .size = 8 }));
+    compiler.basetype_s8 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s8"), .size = 1 }));
+    compiler.basetype_s16 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s16"), .size = 2 }));
+    compiler.basetype_s32 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s32"), .size = 4 }));
+    compiler.basetype_s64 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = 0, .ref = 0, .name = S("s64"), .size = 8 }));
 
-    parser.basetype_u8 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u8"), .size = 1 }));
-    parser.basetype_u16 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u16"), .size = 2 }));
-    parser.basetype_u32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u32"), .size = 4 }));
-    parser.basetype_u64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u64"), .size = 8 }));
+    compiler.basetype_u8 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u8"), .size = 1 }));
+    compiler.basetype_u16 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u16"), .size = 2 }));
+    compiler.basetype_u32 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u32"), .size = 4 }));
+    compiler.basetype_u64 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_INTEGER, .flags = DATATYPE_FLAG_UNSIGNED, .ref = 0, .name = S("u64"), .size = 8 }));
 
-    parser.basetype_f32 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f32"), .size = 4 }));
-    parser.basetype_f64 = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f64"), .size = 8 }));
-    parser.basetype_string = parser.datatypes.count;
-    array_append(&parser.datatypes, ((Datatype) { .kind = DATATYPE_STRING, .flags = 0, .ref = 0, .name = S("string"), .size = 16 }));
+    compiler.basetype_f32 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f32"), .size = 4 }));
+    compiler.basetype_f64 = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_FLOAT, .flags = 0, .ref = 0, .name = S("f64"), .size = 8 }));
+    compiler.basetype_string = compiler.datatypes.count;
+    array_append(&compiler.datatypes, ((Datatype) { .kind = DATATYPE_STRING, .flags = 0, .ref = 0, .name = S("string"), .size = 16 }));
 
-    parse(&parser);
-    type_checking(&parser);
+    compiler.source_files.count = 0;
+    compiler.source_files.allocated = 0;
+    compiler.source_files.items = 0;
+
+    StringArray files_to_load = { 0 };
+
+    files_to_load.count = 0;
+    add_file_to_load(&files_to_load, input_filename);
+
+    for (s32 i = 0; i < files_to_load.count; i += 1)
+    {
+        String filename = files_to_load.items[i];
+
+        u16 file_index = load_file(&compiler.source_files, filename);
+
+        SourceFile *source_file = compiler.source_files.items + file_index;
+
+        compiler.parser.lexer.start = 0;
+        compiler.parser.lexer.current = 0;
+        compiler.parser.lexer.input = source_file->content;
+        compiler.parser.lexer.current_file_index = file_index;
+        compiler.current_directory = get_base_path(source_file->full_path);
+
+        if (!parse(&compiler, &files_to_load))
+        {
+            return 0;
+        }
+    }
+
+    type_checking(&compiler);
 
     Codegen codegen;
 
@@ -612,10 +714,13 @@ int main(s32 argument_count, char **arguments)
     codegen.patches.count = 0;
     codegen.patches.allocated = 0;
     codegen.patches.items = 0;
+    codegen.function_call_patches.count = 0;
+    codegen.function_call_patches.allocated = 0;
+    codegen.function_call_patches.items = 0;
 
     SymbolTable symbol_table = { 0 };
 
-    generate_code(&parser, &codegen, &symbol_table, target_platform, target_architecture);
+    generate_code(&compiler, &codegen, &symbol_table, target_platform, target_architecture);
 
     StringBuilder builder;
     initialize_string_builder(&builder, &default_allocator);

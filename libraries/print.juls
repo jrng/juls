@@ -1,0 +1,6 @@
+#import "basic";
+
+print :: (str: string)
+{
+    write(1, str.data, cast(u64) str.count);
+}

@@ -1,9 +1,4 @@
-write :: (fd: s32, data: *void, count: u64) -> s64 {}
-
-print :: (str: string)
-{
-    write(1, str.data, cast(u64) str.count);
-}
+#import "print";
 
 main :: ()
 {

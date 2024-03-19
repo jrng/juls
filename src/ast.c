@@ -96,7 +96,7 @@ struct Ast
     Ast *parent;
 
     String name;
-    String source_location;
+    SourceLocation source_location;
 
     Ast *decl;
     Ast *type_def;
@@ -221,7 +221,7 @@ ast_list_count(AstList *list)
 }
 
 static Ast *
-append_ast(AstBucketArray *array, AstKind ast_kind, String source_location)
+append_ast(AstBucketArray *array, AstKind ast_kind, SourceLocation source_location)
 {
     if (!array->last_bucket || (array->last_bucket->count >= ArrayCount(array->last_bucket->nodes)))
     {
@@ -315,7 +315,7 @@ print_ast(Ast *ast, s32 indent)
 
         case AST_KIND_VARIABLE_DECLARATION:
         {
-            fprintf(stderr, "%*sVariableDeclaration '%.*s'\n", indent, "", (int) ast->name.count, ast->name.data);
+            fprintf(stderr, "%*sVariableDeclaration '%.*s' (type_id = %u)\n", indent, "", (int) ast->name.count, ast->name.data, ast->type_id);
 
             if (ast->right_expr)
             {

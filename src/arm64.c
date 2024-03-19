@@ -517,15 +517,15 @@ arm64_compare_registers(StringBuilder *builder, Arm64Register a_reg, Arm64Regist
 }
 
 static void
-arm64_emit_cast(Parser *parser, Codegen *codegen, DatatypeId from_type_id, DatatypeId to_type_id)
+arm64_emit_cast(Compiler *compiler, Codegen *codegen, DatatypeId from_type_id, DatatypeId to_type_id)
 {
     if (from_type_id == to_type_id)
     {
         return;
     }
 
-    Datatype *from_type = get_datatype(&parser->datatypes, from_type_id);
-    Datatype *to_type = get_datatype(&parser->datatypes, to_type_id);
+    Datatype *from_type = get_datatype(&compiler->datatypes, from_type_id);
+    Datatype *to_type   = get_datatype(&compiler->datatypes, to_type_id);
 
     u64 from_type_stack_size = Align(from_type->size, 16);
     u64 to_type_stack_size = Align(to_type->size, 16);
@@ -541,7 +541,7 @@ arm64_emit_cast(Parser *parser, Codegen *codegen, DatatypeId from_type_id, Datat
                 assert(from_type_stack_size <= 0xFFFF);
                 assert(to_type_stack_size <= 0xFFFF);
                 arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) (from_type_stack_size - to_type_stack_size));
-                parser->current_stack_offset -= from_type_stack_size - to_type_stack_size;
+                compiler->current_stack_offset -= from_type_stack_size - to_type_stack_size;
 
                 arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, to_type->size);
             }
@@ -558,19 +558,19 @@ arm64_emit_cast(Parser *parser, Codegen *codegen, DatatypeId from_type_id, Datat
 }
 
 static void
-arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform target_platform)
+arm64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatform target_platform)
 {
     switch (expr->kind)
     {
         case AST_KIND_LITERAL_BOOLEAN:
         {
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
             assert(stack_size <= 0xFFFF);
             arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
+            compiler->current_stack_offset += stack_size;
 
             arm64_move_immediate16(&codegen->section_text, ARM64_R0, expr->_bool ? 1 : 0);
             arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, datatype->size);
@@ -578,7 +578,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
         case AST_KIND_LITERAL_INTEGER:
         {
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
                 (expr->_s64 >= 0))
@@ -610,7 +610,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
             assert(stack_size <= 0xFFFF);
             arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
+            compiler->current_stack_offset += stack_size;
 
             arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, datatype->size);
         } break;
@@ -620,13 +620,13 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             u64 string_offset = string_builder_get_size(&codegen->section_cstring);
             string_builder_append_string(&codegen->section_cstring, expr->name);
 
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
             assert(stack_size <= 0xFFFF);
             arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
+            compiler->current_stack_offset += stack_size;
 
             arm64_move_immediate16(&codegen->section_text, ARM64_R0, expr->name.count);
 
@@ -650,15 +650,15 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
             assert(decl->stack_offset > 0);
 
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
             assert(stack_size <= 0xFFFF);
             arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
+            compiler->current_stack_offset += stack_size;
 
-            arm64_copy_from_stack_to_stack(&codegen->section_text, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+            arm64_copy_from_stack_to_stack(&codegen->section_text, 0, compiler->current_stack_offset - decl->stack_offset, datatype->size);
         } break;
 
         case AST_KIND_EXPRESSION_EQUAL:
@@ -668,11 +668,11 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
         case AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL:
         case AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL:
         {
-            arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
-            arm64_emit_expression(parser, codegen, expr->right_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
 
-            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
-            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+            Datatype *left_datatype  = get_datatype(&compiler->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&compiler->datatypes, expr->right_expr->type_id);
 
             u64 max_datatype_size = left_datatype->size;
 
@@ -685,8 +685,8 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             u64 right_stack_size = Align(right_datatype->size, 16);
             u64 total_stack_size = left_stack_size + right_stack_size;
 
-            assert(expr->type_id == parser->basetype_bool);
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            assert(expr->type_id == compiler->basetype_bool);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
@@ -698,7 +698,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             assert(stack_size <= 0xFFFF);
             assert(total_stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) (total_stack_size - stack_size));
-            parser->current_stack_offset -= total_stack_size - stack_size;
+            compiler->current_stack_offset -= total_stack_size - stack_size;
 
             arm64_compare_registers(&codegen->section_text, ARM64_R0, ARM64_R1, max_datatype_size);
 
@@ -773,18 +773,18 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
         case AST_KIND_EXPRESSION_BINOP_ADD:
         case AST_KIND_EXPRESSION_BINOP_MINUS:
         {
-            arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
-            arm64_emit_expression(parser, codegen, expr->right_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
 
-            Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
-            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+            Datatype *left_datatype  = get_datatype(&compiler->datatypes, expr->left_expr->type_id);
+            Datatype *right_datatype = get_datatype(&compiler->datatypes, expr->right_expr->type_id);
 
             u64 left_stack_size  = Align(left_datatype->size, 16);
             u64 right_stack_size = Align(right_datatype->size, 16);
             u64 total_stack_size = left_stack_size + right_stack_size;
 
             assert(expr->type_id);
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
@@ -796,7 +796,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             assert(stack_size <= 0xFFFF);
             assert(total_stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) (total_stack_size - stack_size));
-            parser->current_stack_offset -= total_stack_size - stack_size;
+            compiler->current_stack_offset -= total_stack_size - stack_size;
 
             if (expr->kind == AST_KIND_EXPRESSION_BINOP_ADD)
             {
@@ -821,12 +821,12 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             {
                 assert(expr->decl);
 
-                Datatype *return_type = get_datatype(&parser->datatypes, expr->decl->type_id);
+                Datatype *return_type = get_datatype(&compiler->datatypes, expr->decl->type_id);
                 u64 return_type_stack_size = Align(return_type->size, 16);
 
                 assert(return_type_stack_size <= 0xFFFF);
                 arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
-                parser->current_stack_offset += return_type_stack_size;
+                compiler->current_stack_offset += return_type_stack_size;
             }
             else
             {
@@ -838,9 +838,9 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             ForReversed(argument, expr->children.last)
             {
                 // TODO: does the size match the expression?
-                arm64_emit_expression(parser, codegen, argument, target_platform);
+                arm64_emit_expression(compiler, codegen, argument, target_platform);
 
-                Datatype *datatype = get_datatype(&parser->datatypes, argument->type_id);
+                Datatype *datatype = get_datatype(&compiler->datatypes, argument->type_id);
 
                 u64 stack_size = Align(datatype->size, 16);
                 arguments_stack_size += stack_size;
@@ -887,11 +887,24 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
                 else
                 {
                     assert(expr->decl);
-                    assert(expr->decl->address != S64MAX);
 
-                    s64 jump_offset = string_builder_get_size(&codegen->section_text);
-                    u32 inst = 0x94000000 | (((u32) (expr->decl->address - jump_offset) >> 2) & 0x3FFFFFF);
-                    string_builder_append_u32le(&codegen->section_text, inst);
+                    if (expr->decl->address == S64MAX)
+                    {
+                        u64 instruction_offset = string_builder_get_size(&codegen->section_text);
+                        void *patch_addr = string_builder_append_size(&codegen->section_text, 4);
+
+                        array_append(&codegen->function_call_patches,
+                                     ((FunctionCallPatch) { .patch = patch_addr,
+                                                            .instruction_offset = instruction_offset,
+                                                            .function_decl = expr->decl }));
+                    }
+                    else
+                    {
+                        s64 jump_offset = string_builder_get_size(&codegen->section_text);
+                        // BL
+                        u32 inst = 0x94000000 | (((u32) (expr->decl->address - jump_offset) >> 2) & 0x3FFFFFF);
+                        string_builder_append_u32le(&codegen->section_text, inst);
+                    }
                 }
             }
             else
@@ -901,7 +914,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
             assert(arguments_stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) arguments_stack_size);
-            parser->current_stack_offset -= arguments_stack_size;
+            compiler->current_stack_offset -= arguments_stack_size;
         } break;
 
         case AST_KIND_ASSIGN:
@@ -919,8 +932,8 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
             assert(decl->stack_offset > 0);
 
-            Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
-            Datatype *right_datatype = get_datatype(&parser->datatypes, expr->right_expr->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
+            Datatype *right_datatype = get_datatype(&compiler->datatypes, expr->right_expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
             u64 right_stack_size = Align(right_datatype->size, 16);
@@ -929,12 +942,12 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             {
                 assert(stack_size <= 0xFFFF);
                 arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-                parser->current_stack_offset += stack_size;
+                compiler->current_stack_offset += stack_size;
 
-                arm64_copy_from_stack_to_stack(&codegen->section_text, 0, parser->current_stack_offset - decl->stack_offset, datatype->size);
+                arm64_copy_from_stack_to_stack(&codegen->section_text, 0, compiler->current_stack_offset - decl->stack_offset, datatype->size);
             }
 
-            arm64_emit_expression(parser, codegen, expr->right_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
 
             if (expr->kind != AST_KIND_ASSIGN)
             {
@@ -945,7 +958,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
                 assert(right_stack_size <= 0xFFFF);
                 arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) right_stack_size);
-                parser->current_stack_offset -= right_stack_size;
+                compiler->current_stack_offset -= right_stack_size;
 
                 if (expr->kind == AST_KIND_PLUS_ASSIGN)
                 {
@@ -961,20 +974,20 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
             }
 
             // TODO: does the size match the expression?
-            arm64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - decl->stack_offset, 0, datatype->size);
+            arm64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - decl->stack_offset, 0, datatype->size);
         } break;
 
         case AST_KIND_MEMBER:
         {
-            if (expr->left_expr->type_id == parser->basetype_string)
+            if (expr->left_expr->type_id == compiler->basetype_string)
             {
                 if (strings_are_equal(expr->name, S("count")) ||
                     strings_are_equal(expr->name, S("data")))
                 {
-                    arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
+                    arm64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
 
-                    Datatype *left_datatype = get_datatype(&parser->datatypes, expr->left_expr->type_id);
-                    Datatype *datatype = get_datatype(&parser->datatypes, expr->type_id);
+                    Datatype *left_datatype = get_datatype(&compiler->datatypes, expr->left_expr->type_id);
+                    Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
                     u64 left_stack_size = Align(left_datatype->size, 16);
                     u64 stack_size = Align(datatype->size, 16);
@@ -991,7 +1004,7 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
                     assert(left_stack_size <= 0xFFFF);
                     assert(stack_size <= 0xFFFF);
                     arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) (left_stack_size - stack_size));
-                    parser->current_stack_offset -= left_stack_size - stack_size;
+                    compiler->current_stack_offset -= left_stack_size - stack_size;
 
                     arm64_copy_from_register_to_stack(&codegen->section_text, 0, ARM64_R0, datatype->size);
                 }
@@ -1008,8 +1021,8 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 
         case AST_KIND_CAST:
         {
-            arm64_emit_expression(parser, codegen, expr->left_expr, target_platform);
-            arm64_emit_cast(parser, codegen, expr->left_expr->type_id, expr->type_id);
+            arm64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
+            arm64_emit_cast(compiler, codegen, expr->left_expr->type_id, expr->type_id);
         } break;
 
         default:
@@ -1021,43 +1034,43 @@ arm64_emit_expression(Parser *parser, Codegen *codegen, Ast *expr, JulsPlatform 
 }
 
 static void
-arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatform target_platform,
+arm64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPlatform target_platform,
                      Datatype *return_type, u64 return_type_stack_size)
 {
     switch (statement->kind)
     {
         case AST_KIND_VARIABLE_DECLARATION:
         {
-            Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, statement->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
             assert(stack_size <= 0xFFFF);
             arm64_subtract_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset += stack_size;
-            statement->stack_offset = parser->current_stack_offset;
+            compiler->current_stack_offset += stack_size;
+            statement->stack_offset = compiler->current_stack_offset;
 
-            parser->stack_allocated[parser->stack_allocated_index] += stack_size;
+            compiler->stack_allocated[compiler->stack_allocated_index] += stack_size;
 
             if (statement->right_expr)
             {
-                arm64_emit_expression(parser, codegen, statement->right_expr, target_platform);
+                arm64_emit_expression(compiler, codegen, statement->right_expr, target_platform);
 
                 // TODO: does the size match the expression?
-                arm64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - statement->stack_offset, 0, datatype->size);
+                arm64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - statement->stack_offset, 0, datatype->size);
 
                 assert(stack_size <= 0xFFFF);
                 arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-                parser->current_stack_offset -= stack_size;
+                compiler->current_stack_offset -= stack_size;
             }
         } break;
 
         case AST_KIND_IF:
         {
-            arm64_emit_expression(parser, codegen, statement->left_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, statement->left_expr, target_platform);
 
-            assert(statement->left_expr->type_id == parser->basetype_bool);
-            Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
+            assert(statement->left_expr->type_id == compiler->basetype_bool);
+            Datatype *datatype = get_datatype(&compiler->datatypes, statement->left_expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
@@ -1065,7 +1078,7 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
 
             assert(stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset -= stack_size;
+            compiler->current_stack_offset -= stack_size;
 
             // SUBS (immediate)
             u32 inst = 0xF1000000 | ((u32) ARM64_R0 << 5) | ARM64_R0;
@@ -1083,7 +1096,7 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
                 else_code = statement->children.last;
             }
 
-            arm64_emit_statement(parser, codegen, if_code, target_platform, return_type, return_type_stack_size);
+            arm64_emit_statement(compiler, codegen, if_code, target_platform, return_type, return_type_stack_size);
 
             s64 end_offset = string_builder_get_size(&codegen->section_text);
             u32 *end_patch = 0;
@@ -1099,7 +1112,7 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
 
             if (else_code)
             {
-                arm64_emit_statement(parser, codegen, else_code, target_platform, return_type, return_type_stack_size);
+                arm64_emit_statement(compiler, codegen, else_code, target_platform, return_type, return_type_stack_size);
 
                 s64 end_target = string_builder_get_size(&codegen->section_text);
                 *end_patch = 0x14000000 | (((u32) (end_target - end_offset) >> 2) & 0x3FFFFFF);
@@ -1108,16 +1121,16 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
 
         case AST_KIND_FOR:
         {
-            push_scope(parser);
+            push_scope(compiler);
 
-            arm64_emit_statement(parser, codegen, statement->decl, target_platform, return_type, return_type_stack_size);
+            arm64_emit_statement(compiler, codegen, statement->decl, target_platform, return_type, return_type_stack_size);
 
             s64 start_target = string_builder_get_size(&codegen->section_text);
 
-            arm64_emit_expression(parser, codegen, statement->left_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, statement->left_expr, target_platform);
 
-            assert(statement->left_expr->type_id == parser->basetype_bool);
-            Datatype *datatype = get_datatype(&parser->datatypes, statement->left_expr->type_id);
+            assert(statement->left_expr->type_id == compiler->basetype_bool);
+            Datatype *datatype = get_datatype(&compiler->datatypes, statement->left_expr->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
@@ -1125,7 +1138,7 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
 
             assert(stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset -= stack_size;
+            compiler->current_stack_offset -= stack_size;
 
             // SUBS (immediate)
             u32 inst = 0xF1000000 | ((u32) ARM64_R0 << 5) | ARM64_R0;
@@ -1135,16 +1148,16 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
             s64 end_offset = string_builder_get_size(&codegen->section_text);
             u32 *end_patch = string_builder_append_size(&codegen->section_text, 4);
 
-            arm64_emit_statement(parser, codegen, statement->children.first, target_platform, return_type, return_type_stack_size);
-            arm64_emit_expression(parser, codegen, statement->right_expr, target_platform);
+            arm64_emit_statement(compiler, codegen, statement->children.first, target_platform, return_type, return_type_stack_size);
+            arm64_emit_expression(compiler, codegen, statement->right_expr, target_platform);
 
-            Datatype *right_datatype = get_datatype(&parser->datatypes, statement->right_expr->type_id);
+            Datatype *right_datatype = get_datatype(&compiler->datatypes, statement->right_expr->type_id);
 
             u64 right_stack_size = Align(right_datatype->size, 16);
 
             assert(right_stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) right_stack_size);
-            parser->current_stack_offset -= right_stack_size;
+            compiler->current_stack_offset -= right_stack_size;
 
             s64 start_offset = string_builder_get_size(&codegen->section_text);
             inst = 0x14000000 | (((u32) (start_target - start_offset) >> 2) & 0x3FFFFFF);
@@ -1153,32 +1166,32 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
             s64 end_target = string_builder_get_size(&codegen->section_text);
             *end_patch = 0x54000000 | ((((u32) (end_target - end_offset) >> 2) & 0x7FFFF) << 5);
 
-            u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
-            pop_scope(parser);
+            u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
+            pop_scope(compiler);
 
             assert(stack_allocated <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_allocated);
-            parser->current_stack_offset -= stack_allocated;
+            compiler->current_stack_offset -= stack_allocated;
         } break;
 
         case AST_KIND_RETURN:
         {
             assert(statement->left_expr);
 
-            arm64_emit_expression(parser, codegen, statement->left_expr, target_platform);
+            arm64_emit_expression(compiler, codegen, statement->left_expr, target_platform);
 
-            arm64_copy_from_stack_to_stack(&codegen->section_text, parser->current_stack_offset - return_type_stack_size, 0, return_type->size);
+            arm64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - return_type_stack_size, 0, return_type->size);
 
             assert(return_type_stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) return_type_stack_size);
-            parser->current_stack_offset -= return_type_stack_size;
+            compiler->current_stack_offset -= return_type_stack_size;
 
             u64 stack_allocated = 0;
 
-            while (parser->stack_allocated_index >= 0)
+            while (compiler->stack_allocated_index >= 0)
             {
-                stack_allocated += parser->stack_allocated[parser->stack_allocated_index];
-                pop_scope(parser);
+                stack_allocated += compiler->stack_allocated[compiler->stack_allocated_index];
+                pop_scope(compiler);
             }
 
             assert(stack_allocated <= 0xFFFF);
@@ -1190,76 +1203,76 @@ arm64_emit_statement(Parser *parser, Codegen *codegen, Ast *statement, JulsPlatf
 
         case AST_KIND_BLOCK:
         {
-            push_scope(parser);
+            push_scope(compiler);
 
             For(stmt, statement->children.first)
             {
-                arm64_emit_statement(parser, codegen, stmt, target_platform, return_type, return_type_stack_size);
+                arm64_emit_statement(compiler, codegen, stmt, target_platform, return_type, return_type_stack_size);
             }
 
-            u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
-            pop_scope(parser);
+            u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
+            pop_scope(compiler);
 
             assert(stack_allocated <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_allocated);
-            parser->current_stack_offset -= stack_allocated;
+            compiler->current_stack_offset -= stack_allocated;
         } break;
 
         default:
         {
-            arm64_emit_expression(parser, codegen, statement, target_platform);
+            arm64_emit_expression(compiler, codegen, statement, target_platform);
 
-            Datatype *datatype = get_datatype(&parser->datatypes, statement->type_id);
+            Datatype *datatype = get_datatype(&compiler->datatypes, statement->type_id);
 
             u64 stack_size = Align(datatype->size, 16);
 
             assert(stack_size <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_size);
-            parser->current_stack_offset -= stack_size;
+            compiler->current_stack_offset -= stack_size;
         } break;
     }
 }
 
 static void
-arm64_emit_function(Parser *parser, Codegen *codegen, Ast *func, JulsPlatform target_platform)
+arm64_emit_function(Compiler *compiler, Codegen *codegen, Ast *func, JulsPlatform target_platform)
 {
     assert(func->kind == AST_KIND_FUNCTION_DECLARATION);
 
     func->address = string_builder_get_size(&codegen->section_text);
 
-    parser->current_stack_offset = 0;
-    parser->stack_allocated_index = -1;
+    compiler->current_stack_offset = 0;
+    compiler->stack_allocated_index = -1;
 
-    Datatype *return_type = get_datatype(&parser->datatypes, func->type_id);
+    Datatype *return_type = get_datatype(&compiler->datatypes, func->type_id);
     u64 return_type_stack_size = Align(return_type->size, 16);
-    parser->current_stack_offset += return_type_stack_size;
+    compiler->current_stack_offset += return_type_stack_size;
 
     ForReversed(parameter, func->parameters.last)
     {
-        Datatype *datatype = get_datatype(&parser->datatypes, parameter->type_id);
+        Datatype *datatype = get_datatype(&compiler->datatypes, parameter->type_id);
 
         u64 stack_size = Align(datatype->size, 16);
 
-        parser->current_stack_offset += stack_size;
-        parameter->stack_offset = parser->current_stack_offset;
+        compiler->current_stack_offset += stack_size;
+        parameter->stack_offset = compiler->current_stack_offset;
     }
 
     arm64_store_register(&codegen->section_text, ARM64_R30, ARM64_SP, -16);
-    parser->current_stack_offset += 16;
+    compiler->current_stack_offset += 16;
 
-    push_scope(parser);
+    push_scope(compiler);
 
     For(statement, func->children.first)
     {
-        arm64_emit_statement(parser, codegen, statement, target_platform, return_type, return_type_stack_size);
+        arm64_emit_statement(compiler, codegen, statement, target_platform, return_type, return_type_stack_size);
     }
 
     if (!func->type_def)
     {
-        assert(parser->stack_allocated_index == 0);
+        assert(compiler->stack_allocated_index == 0);
 
-        u64 stack_allocated = parser->stack_allocated[parser->stack_allocated_index];
-        pop_scope(parser);
+        u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
+        pop_scope(compiler);
 
         assert(stack_allocated <= 0xFFFF);
         arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_allocated);
@@ -1270,7 +1283,7 @@ arm64_emit_function(Parser *parser, Codegen *codegen, Ast *func, JulsPlatform ta
 }
 
 static void
-generate_arm64(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform)
+generate_arm64(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, JulsPlatform target_platform)
 {
     String entry_point_name = S("main");
 
@@ -1315,7 +1328,7 @@ generate_arm64(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, Juls
 
     u64 jump_target = 0;
 
-    For(decl, parser->global_declarations.children.first)
+    For(decl, compiler->global_declarations.children.first)
     {
         if (decl->kind == AST_KIND_FUNCTION_DECLARATION)
         {
@@ -1326,7 +1339,7 @@ generate_arm64(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, Juls
                 jump_target = offset;
             }
 
-            arm64_emit_function(parser, codegen, decl, target_platform);
+            arm64_emit_function(compiler, codegen, decl, target_platform);
 
             u64 size = string_builder_get_size(&codegen->section_text) - offset;
 
@@ -1341,5 +1354,15 @@ generate_arm64(Parser *parser, Codegen *codegen, SymbolTable *symbol_table, Juls
     else
     {
         fprintf(stderr, "error: there is no entry point '%.*s'\n", (int) entry_point_name.count, entry_point_name.data);
+    }
+
+    for (s32 i = 0; i < codegen->function_call_patches.count; i += 1)
+    {
+        FunctionCallPatch *patch = codegen->function_call_patches.items + i;
+        Ast *function_decl = patch->function_decl;
+
+        assert(function_decl->address != S64MAX);
+
+        *(u32 *) patch->patch = 0x94000000 | (((u32) (function_decl->address - patch->instruction_offset) >> 2) & 0x3FFFFFF);
     }
 }
