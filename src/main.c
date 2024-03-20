@@ -170,7 +170,7 @@ static const String platform_names[] = {
     S("Android"),
     S("Windows"),
     S("Linux"),
-    S("macOs"),
+    S("macOS"),
 };
 
 static const String architecture_names[] = {

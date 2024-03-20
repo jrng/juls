@@ -14,8 +14,19 @@ The compiler is implemented in C99 and dependencies are kept to a
 minimum to ease porting to different platforms.
 
 Currently the compiler supports generating code and binary files
-for Aarch64 and x86_64 on Android, Linux and macOs. Windows support
+for Aarch64 and x86_64 on Android, Linux and macOS. Windows support
 is planned.
+
+## Hello World
+
+```
+#import "print";
+
+main ::()
+{
+    print("Hello World!\n");
+}
+```
 
 ## References
 
