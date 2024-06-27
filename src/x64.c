@@ -1443,6 +1443,11 @@ generate_x64(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, Ju
         // syscall
         x64_syscall(&codegen->section_text);
     }
+    else if (target_platform == JulsPlatformWindows)
+    {
+        // TODO: implement
+        return;
+    }
     else if (target_platform == JulsPlatformMacOs)
     {
         // call main

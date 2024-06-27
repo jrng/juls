@@ -477,6 +477,7 @@ typedef struct
 
 #include "arm64.c"
 #include "x64.c"
+#include "pe.c"
 #include "elf.c"
 #include "macho.c"
 
@@ -622,7 +623,14 @@ int main(s32 argument_count, char **arguments)
     if (!output_filename.count)
     {
         // TODO: derive from input_filename
-        output_filename = S("output");
+        if (target_platform == JulsPlatformWindows)
+        {
+            output_filename = S("output.exe");
+        }
+        else
+        {
+            output_filename = S("output");
+        }
     }
 
     Compiler compiler;
@@ -729,6 +737,10 @@ int main(s32 argument_count, char **arguments)
         (target_platform == JulsPlatformLinux))
     {
         generate_elf(&builder, codegen, symbol_table, target_architecture);
+    }
+    else if (target_platform == JulsPlatformWindows)
+    {
+        generate_pe(&builder, codegen, symbol_table, target_architecture);
     }
     else if (target_platform == JulsPlatformMacOs)
     {

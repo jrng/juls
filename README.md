@@ -22,7 +22,7 @@ is planned.
 ```
 #import "print";
 
-main ::()
+main :: ()
 {
     print("Hello World!\n");
 }
