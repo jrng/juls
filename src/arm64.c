@@ -1307,6 +1307,11 @@ generate_arm64(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, 
         // svc #0
         arm64_svc(&codegen->section_text, 0);
     }
+    else if (target_platform == JulsPlatformWindows)
+    {
+        // TODO: implement
+        return;
+    }
     else if (target_platform == JulsPlatformMacOs)
     {
         // bl main
