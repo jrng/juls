@@ -1,2 +1,10 @@
+# build tool
+/c_make
+/c_make.exe
+/c_make.obj
+
 # build artifacts
 build
+
+# macos attribute files
+.DS_Store

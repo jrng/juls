@@ -28,6 +28,27 @@ main :: ()
 }
 ```
 
+## How to build
+
+Juls uses c_make as its build system. The following commands should get you going.
+For more details see [https://github.com/jrng/c_make](https://github.com/jrng/c_make).
+
+### Linux, macOS, Android
+
+```shell
+$ cc -o c_make c_make.c  # only needs to happen once
+$ ./c_make setup build
+$ ./c_make build build
+```
+
+### Windows
+
+```shell
+$ cl -Fec_make.exe c_make.c  # only needs to happen once
+$ c_make setup build
+$ c_make build build
+```
+
 ## References
 
 ### Syscalls
