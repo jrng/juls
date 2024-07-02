@@ -177,17 +177,21 @@ typedef enum
     JulsArchitectureX86_64 = 1,
 } JulsArchitecture;
 
+#define StringConstant(str) { sizeof(str) - 1, (u8 *) str }
+
 static const String platform_names[] = {
-    S("Android"),
-    S("Windows"),
-    S("Linux"),
-    S("macOS"),
+    StringConstant("Android"),
+    StringConstant("Windows"),
+    StringConstant("Linux"),
+    StringConstant("macOS"),
 };
 
 static const String architecture_names[] = {
-    S("Arm64"),
-    S("x86_64"),
+    StringConstant("Arm64"),
+    StringConstant("x86_64"),
 };
+
+#undef StringConstant
 
 #if JULS_PLATFORM_ANDROID
 static JulsPlatform default_platform = JulsPlatformAndroid;

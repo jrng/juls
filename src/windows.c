@@ -88,7 +88,7 @@ get_file_size(File *file)
     assert(file);
 
     s64 result = 0;
-    BY_HANDLE_FILE_INFORMATION file_info = {};
+    BY_HANDLE_FILE_INFORMATION file_info = { 0 };
 
     if (GetFileInformationByHandle((HANDLE) file, &file_info))
     {
