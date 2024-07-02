@@ -60,7 +60,6 @@ generate_elf(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, 
     string_builder_append_u64le(builder, page_size); // p_align
     program_header_index += 1;
 
-
     string_builder_append_u32le(builder, 1); // type
     string_builder_append_u32le(builder, 5); // flags
     u64 *section_text_offset = string_builder_append_size(builder, 8); // p_offset
@@ -82,13 +81,7 @@ generate_elf(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, 
 
     string_builder_append_builder(builder, codegen.section_cstring);
 
-    u64 current_size = string_builder_get_size(builder);
-    u64 padding_size = Align(current_size, 4) - current_size;
-
-    for (u64 i = 0; i < padding_size; i += 1)
-    {
-        string_builder_append_u8(builder, 0);
-    }
+    string_builder_align(builder, 4, 0);
 
     u64 cstring_end = string_builder_get_size(builder);
 

@@ -331,6 +331,18 @@ string_builder_append_u8(StringBuilder *builder, u8 value)
     buffer->count += 1;
 }
 
+static void
+string_builder_align(StringBuilder *builder, u64 alignment, u8 fill)
+{
+    u64 current_size = string_builder_get_size(builder);
+    u64 padding_size = Align(current_size, alignment) - current_size;
+
+    for (u64 i = 0; i < padding_size; i += 1)
+    {
+        string_builder_append_u8(builder, fill);
+    }
+}
+
 static void *
 string_builder_append_size(StringBuilder *builder, s64 size)
 {

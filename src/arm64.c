@@ -1309,8 +1309,12 @@ generate_arm64(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, 
     }
     else if (target_platform == JulsPlatformWindows)
     {
+        // bl main
+        jump_patch = string_builder_append_size(&codegen->section_text, 4);
+
         // TODO: implement
-        return;
+        // where to put the exit code?
+        arm64_ret(&codegen->section_text);
     }
     else if (target_platform == JulsPlatformMacOs)
     {

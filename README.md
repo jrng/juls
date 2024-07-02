@@ -65,6 +65,11 @@ $ c_make build build
 - Arm Architecture Reference Manual for A-profile architecture: [https://developer.arm.com/documentation/ddi0487/ja/](https://developer.arm.com/documentation/ddi0487/ja/)
   C6.2 has a list of all the base instructions with their respective encodings.
 
+### PE
+
+- Windows Executable Files: [https://en.wikibooks.org/wiki/X86_Disassembly/Windows_Executable_Files](https://en.wikibooks.org/wiki/X86_Disassembly/Windows_Executable_Files)
+- Smallest 64-Bit PE File on Windows 10: [https://github.com/ayaka14732/TinyPE-on-Win10](https://github.com/ayaka14732/TinyPE-on-Win10)
+
 ### ELF
 
 - Executable and Linking Format (ELF) Specification, Version 1.2: [https://refspecs.linuxbase.org/elf/elf.pdf](https://refspecs.linuxbase.org/elf/elf.pdf)

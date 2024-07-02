@@ -1445,8 +1445,16 @@ generate_x64(Compiler *compiler, Codegen *codegen, SymbolTable *symbol_table, Ju
     }
     else if (target_platform == JulsPlatformWindows)
     {
-        // TODO: implement
-        return;
+        // call main
+        string_builder_append_u8(&codegen->section_text, 0xE8);
+        jump_patch = string_builder_append_size(&codegen->section_text, 4);
+        jump_location = string_builder_get_size(&codegen->section_text);
+
+        // mov rax, 42
+        x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 42);
+
+        // ret
+        x64_ret(&codegen->section_text);
     }
     else if (target_platform == JulsPlatformMacOs)
     {
