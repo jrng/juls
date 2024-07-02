@@ -21,9 +21,19 @@
 #define JULS_ARCHITECTURE_X86_64 0
 
 #if JULS_PLATFORM_WINDOWS
-#  if defined(_M_AMD64)
-#    undef JULS_ARCHITECTURE_X86_64
-#    define JULS_ARCHITECTURE_X86_64 1
+#  if defined(__MINGW32__)
+#    if defined(__x86_64__)
+#      undef JULS_ARCHITECTURE_X86_64
+#      define JULS_ARCHITECTURE_X86_64 1
+#    elif defined(__aarch64__)
+#      undef JULS_ARCHITECTURE_ARM64
+#      define JULS_ARCHITECTURE_ARM64 1
+#    endif
+#  else
+#    if defined(_M_AMD64)
+#      undef JULS_ARCHITECTURE_X86_64
+#      define JULS_ARCHITECTURE_X86_64 1
+#    endif
 #  endif
 #elif JULS_PLATFORM_ANDROID || JULS_PLATFORM_LINUX || JULS_PLATFORM_MACOS
 #  if defined(__x86_64__)
@@ -88,9 +98,9 @@ static Allocator default_allocator;
     do {                                                                                                                                    \
         if ((array)->count >= (array)->allocated)                                                                                           \
         {                                                                                                                                   \
-            (array)->items     = realloc(&default_allocator, (array)->items,                                                                \
-                                         (array)->allocated * sizeof(*(array)->items),                                                      \
-                                         (((array)->allocated == 0) ? 16 : 2 * (array)->allocated) * sizeof(*(array)->items), 8, false);    \
+            (array)->items     = reallocate(&default_allocator, (array)->items,                                                             \
+                                            (array)->allocated * sizeof(*(array)->items),                                                   \
+                                            (((array)->allocated == 0) ? 16 : 2 * (array)->allocated) * sizeof(*(array)->items), 8, false); \
             (array)->allocated = ((array)->allocated == 0) ? 16 : 2 * (array)->allocated;                                                   \
         }                                                                                                                                   \
         (array)->items[(array)->count++] = (item);                                                                                          \
@@ -141,6 +151,7 @@ add_file_to_load(StringArray *files, String full_path)
 #if JULS_PLATFORM_ANDROID
 #  include "unix.c"
 #elif JULS_PLATFORM_WINDOWS
+#  include "windows.c"
 #elif JULS_PLATFORM_LINUX
 #  include "unix.c"
 #elif JULS_PLATFORM_MACOS

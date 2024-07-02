@@ -75,7 +75,7 @@ alloc(Allocator *allocator, u64 size, u64 alignment, bool clear)
 }
 
 static void *
-realloc(Allocator *allocator, void *old_ptr, u64 old_size, u64 new_size, u64 alignment, bool clear)
+reallocate(Allocator *allocator, void *old_ptr, u64 old_size, u64 new_size, u64 alignment, bool clear)
 {
     void *result = alloc(allocator, new_size, alignment, clear);
 
