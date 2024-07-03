@@ -60,11 +60,11 @@ generate_pe(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, J
     string_builder_append_u64le(builder, 0x00400000); // ImageBase
     string_builder_append_u32le(builder, section_alignment); // SectionAlignment
     string_builder_append_u32le(builder, file_alignment);    // FileAlignment
-    string_builder_append_u16le(builder, 6);          // MajorOperatingSystemVersion
+    string_builder_append_u16le(builder, 0);          // MajorOperatingSystemVersion
     string_builder_append_u16le(builder, 0);          // MinorOperatingSystemVersion
     string_builder_append_u16le(builder, 0);          // MajorImageVersion
     string_builder_append_u16le(builder, 0);          // MinorImageVersion
-    string_builder_append_u16le(builder, 0);          // MajorSubsystemVersion
+    string_builder_append_u16le(builder, 6);          // MajorSubsystemVersion
     string_builder_append_u16le(builder, 0);          // MinorSubsystemVersion
     string_builder_append_u32le(builder, 0);          // Win32VersionValue
     u32 *size_of_image =
@@ -74,8 +74,8 @@ generate_pe(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, J
     string_builder_append_u32le(builder, 0);          // CheckSum
     string_builder_append_u16le(builder, 3);          // Subsystem
     string_builder_append_u16le(builder, 0);          // DllCharacteristics
-    string_builder_append_u64le(builder, 2048);       // SizeOfStackReserve
-    string_builder_append_u64le(builder, 2048);       // SizeOfStackCommit
+    string_builder_append_u64le(builder, 0x100000);   // SizeOfStackReserve
+    string_builder_append_u64le(builder, 0x1000);     // SizeOfStackCommit
     string_builder_append_u64le(builder, 0);          // SizeOfHeapReserve
     string_builder_append_u64le(builder, 0);          // SizeOfHeapCommit
     string_builder_append_u32le(builder, 0);          // LoaderFlags
@@ -171,21 +171,29 @@ generate_pe(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, J
 
     // .rdata
 
-    string_builder_append_string(builder, S(".rdata\0\0"));  // Name
-    u32 *rdata_virtual_size =
-        string_builder_append_size(builder, 4);              // VirtualSize
-    u32 *rdata_virtual_address =
-        string_builder_append_size(builder, 4);              // VirtualAddress
-    u32 *rdata_size_of_raw_data =
-        string_builder_append_size(builder, 4);              // SizeOfRawData
-    u32 *rdata_pointer_to_raw_data =
-        string_builder_append_size(builder, 4);              // PointerToRawData
-    string_builder_append_u32le(builder, 0);                 // PointerToRelocations
-    string_builder_append_u32le(builder, 0);                 // PointerToLinenumbers
-    string_builder_append_u16le(builder, 0);                 // NumberOfRelocations
-    string_builder_append_u16le(builder, 0);                 // NumberOfLinenumbers
-    string_builder_append_u32le(builder, 0x60000020);        // Characteristics
-    section_header_index += 1;
+    u32 *rdata_virtual_size = 0;
+    u32 *rdata_virtual_address = 0;
+    u32 *rdata_size_of_raw_data = 0;
+    u32 *rdata_pointer_to_raw_data = 0;
+
+    if (string_builder_get_size(&codegen.section_cstring) > 0)
+    {
+        string_builder_append_string(builder, S(".rdata\0\0"));  // Name
+        rdata_virtual_size =
+            string_builder_append_size(builder, 4);              // VirtualSize
+        rdata_virtual_address =
+            string_builder_append_size(builder, 4);              // VirtualAddress
+        rdata_size_of_raw_data =
+            string_builder_append_size(builder, 4);              // SizeOfRawData
+        rdata_pointer_to_raw_data =
+            string_builder_append_size(builder, 4);              // PointerToRawData
+        string_builder_append_u32le(builder, 0);                 // PointerToRelocations
+        string_builder_append_u32le(builder, 0);                 // PointerToLinenumbers
+        string_builder_append_u16le(builder, 0);                 // NumberOfRelocations
+        string_builder_append_u16le(builder, 0);                 // NumberOfLinenumbers
+        string_builder_append_u32le(builder, 0x40000040);        // Characteristics
+        section_header_index += 1;
+    }
 
     *number_of_sections = section_header_index;
 
@@ -215,20 +223,23 @@ generate_pe(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table, J
 
     // .rdata
 
-    u64 rdata_start = string_builder_get_size(builder);
+    if (string_builder_get_size(&codegen.section_cstring) > 0)
+    {
+        u64 rdata_start = string_builder_get_size(builder);
 
-    string_builder_append_builder(builder, codegen.section_cstring);
-    string_builder_align(builder, file_alignment, 0);
+        string_builder_append_builder(builder, codegen.section_cstring);
+        string_builder_align(builder, file_alignment, 0);
 
-    u64 rdata_end = string_builder_get_size(builder);
+        u64 rdata_end = string_builder_get_size(builder);
 
-    *rdata_virtual_size = (u32) (rdata_end - rdata_start);
-    *rdata_virtual_address = vaddr;
-    *rdata_pointer_to_raw_data = (u32) rdata_start;
-    *rdata_size_of_raw_data = Align((u32) (rdata_end - rdata_start), file_alignment);
+        *rdata_virtual_size = (u32) (rdata_end - rdata_start);
+        *rdata_virtual_address = vaddr;
+        *rdata_pointer_to_raw_data = (u32) rdata_start;
+        *rdata_size_of_raw_data = Align((u32) (rdata_end - rdata_start), file_alignment);
 
-    vaddr += rdata_end - rdata_start;
-    vaddr = Align(vaddr, section_alignment);
+        vaddr += rdata_end - rdata_start;
+        vaddr = Align(vaddr, section_alignment);
+    }
 
     *size_of_image = (u32) vaddr;
 }
