@@ -93,16 +93,6 @@
 #  define C_MAKE_DEF extern
 #endif
 
-#if !defined(C_MAKE_NO_ENTRY_POINT)
-
-#  define C_MAKE_SETUP_ENTRY() void _c_make_setup_entry_(void)
-#  define C_MAKE_BUILD_ENTRY() void _c_make_build_entry_(void)
-
-C_MAKE_SETUP_ENTRY();
-C_MAKE_BUILD_ENTRY();
-
-#endif // !defined(C_MAKE_NO_ENTRY_POINT)
-
 #if C_MAKE_PLATFORM_WINDOWS
 
 #  define UNICODE
@@ -132,6 +122,21 @@ extern "C" {
 #else
 #  include <stdbool.h>
 #endif
+
+typedef enum CMakeTarget
+{
+    CMakeTargetSetup   = 0,
+    CMakeTargetBuild   = 1,
+    CMakeTargetInstall = 2,
+} CMakeTarget;
+
+#if !defined(C_MAKE_NO_ENTRY_POINT)
+
+#  define C_MAKE_ENTRY() void _c_make_entry_(CMakeTarget c_make_target)
+
+C_MAKE_ENTRY();
+
+#endif // !defined(C_MAKE_NO_ENTRY_POINT)
 
 typedef enum CMakeLogLevel
 {
@@ -353,6 +358,7 @@ C_MAKE_DEF CMakeArchitecture c_make_get_target_architecture(void);
 C_MAKE_DEF CMakeBuildType c_make_get_build_type(void);
 C_MAKE_DEF const char *c_make_get_build_path(void);
 C_MAKE_DEF const char *c_make_get_source_path(void);
+C_MAKE_DEF const char *c_make_get_install_prefix(void);
 
 C_MAKE_DEF const char *c_make_get_host_c_compiler(void);
 C_MAKE_DEF const char *c_make_get_target_c_compiler(void);
@@ -374,6 +380,7 @@ C_MAKE_DEF bool c_make_directory_exists(const char *directory_name);
 C_MAKE_DEF bool c_make_create_directory(const char *directory_name);
 C_MAKE_DEF bool c_make_read_entire_file(const char *file_name, CMakeString *content);
 C_MAKE_DEF bool c_make_write_entire_file(const char *file_name, CMakeString content);
+C_MAKE_DEF bool c_make_copy_file(const char *src_file, const char *dst_file);
 C_MAKE_DEF bool c_make_rename_file(const char *old_file_name, const char *new_file_name);
 C_MAKE_DEF bool c_make_delete_file(const char *file_name);
 
@@ -923,6 +930,26 @@ C_MAKE_DEF const char *
 c_make_get_source_path(void)
 {
     return _c_make_context.source_path;
+}
+
+C_MAKE_DEF const char *
+c_make_get_install_prefix(void)
+{
+    const char *result = 0;
+
+    CMakeConfigValue value = c_make_config_get("install_prefix");
+
+    if (value.is_valid)
+    {
+        result = value.val;
+    }
+    else
+    {
+        // TODO: something else for windows
+        result = "/usr/local";
+    }
+
+    return result;
 }
 
 C_MAKE_DEF const char *
@@ -1614,6 +1641,90 @@ c_make_write_entire_file(const char *file_name, CMakeString content)
 }
 
 C_MAKE_DEF bool
+c_make_copy_file(const char *src_file_name, const char *dst_file_name)
+{
+#if C_MAKE_PLATFORM_WINDOWS
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    LPWSTR utf16_src_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, src_file_name);
+    LPWSTR utf16_dst_file_name = c_make_utf8_to_utf16(&_c_make_context.private_memory, dst_file_name);
+
+    if (!CopyFile(utf16_src_file_name, utf16_dst_file_name, FALSE))
+    {
+        c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+        return false;
+    }
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+    return true;
+#elif C_MAKE_PLATFORM_ANDROID || C_MAKE_PLATFORM_LINUX || C_MAKE_PLATFORM_MACOS
+    int src_fd = open(src_file_name, O_RDONLY);
+
+    if (src_fd < 0)
+    {
+        c_make_log(CMakeLogLevelError, "could not open file '%s': %s\n", src_file_name, strerror(errno));
+        return false;
+    }
+
+    struct stat stats;
+
+    if (fstat(src_fd, &stats) < 0)
+    {
+        c_make_log(CMakeLogLevelError, "could not get file stats on '%s': %s\n", src_file_name, strerror(errno));
+        close(src_fd);
+        return false;
+    }
+
+    size_t src_file_size = stats.st_size;
+
+    int dst_fd = open(dst_file_name, O_WRONLY | O_TRUNC | O_CREAT, stats.st_mode);
+
+    if (dst_fd < 0)
+    {
+        c_make_log(CMakeLogLevelError, "could not create file '%s': %s\n", dst_file_name, strerror(errno));
+        close(src_fd);
+        return false;
+    }
+
+    size_t private_used = c_make_memory_get_used(&_c_make_context.private_memory);
+
+    void *copy_buffer = c_make_memory_allocate(&_c_make_context.private_memory, 4096);
+
+    size_t index = 0;
+
+    while (index < src_file_size)
+    {
+        size_t remaining_size = src_file_size - index;
+        size_t size_to_read = 4096;
+
+        if (remaining_size < size_to_read)
+        {
+            size_to_read = remaining_size;
+        }
+
+        ssize_t read_bytes = read(src_fd, copy_buffer, size_to_read);
+
+        if ((read_bytes < 0) || ((size_t) read_bytes != size_to_read))
+        {
+            c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+            close(src_fd);
+            close(dst_fd);
+            return false;
+        }
+
+        write(dst_fd, copy_buffer, size_to_read);
+    }
+
+    c_make_memory_set_used(&_c_make_context.private_memory, private_used);
+
+    close(dst_fd);
+    close(src_fd);
+    return true;
+#endif
+}
+
+C_MAKE_DEF bool
 c_make_rename_file(const char *old_file_name, const char *new_file_name)
 {
 #if C_MAKE_PLATFORM_WINDOWS
@@ -2229,7 +2340,13 @@ int main(int argument_count, char **arguments)
             }
         }
 
-        _c_make_setup_entry_();
+        _c_make_entry_(CMakeTargetSetup);
+
+        if (!c_make_config_get("install_prefix").is_valid)
+        {
+            // TODO: set to something different for windows
+            c_make_config_set("install_prefix", "/usr/local");
+        }
 
         if (c_make_get_host_platform() != c_make_get_target_platform())
         {
@@ -2277,7 +2394,8 @@ int main(int argument_count, char **arguments)
             return -1;
         }
     }
-    else if (c_make_strings_are_equal(command, CMakeStringLiteral("build")))
+    else if (c_make_strings_are_equal(command, CMakeStringLiteral("build")) ||
+             c_make_strings_are_equal(command, CMakeStringLiteral("install")))
     {
         if (!c_make_directory_exists(build_directory))
         {
@@ -2302,7 +2420,14 @@ int main(int argument_count, char **arguments)
             c_make_print_config();
         }
 
-        _c_make_build_entry_();
+        if (c_make_strings_are_equal(command, CMakeStringLiteral("build")))
+        {
+            _c_make_entry_(CMakeTargetBuild);
+        }
+        else
+        {
+            _c_make_entry_(CMakeTargetInstall);
+        }
     }
 
     return 0;
