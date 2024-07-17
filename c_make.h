@@ -1714,6 +1714,7 @@ c_make_copy_file(const char *src_file_name, const char *dst_file_name)
         }
 
         write(dst_fd, copy_buffer, size_to_read);
+        index += size_to_read;
     }
 
     c_make_memory_set_used(&_c_make_context.private_memory, private_used);
