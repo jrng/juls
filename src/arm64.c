@@ -65,20 +65,6 @@ arm64_move_inverted_immediate16(StringBuilder *builder, Arm64Register reg, u16 v
 }
 
 static inline void
-arm64_store_register(StringBuilder *builder, Arm64Register store_reg, Arm64Register base_reg, s16 offset)
-{
-    u32 inst = 0xF8000C00 | (((u32) offset & 0x1FF) << 12) | ((u32) base_reg << 5) | store_reg;
-    string_builder_append_u32le(builder, inst);
-}
-
-static inline void
-arm64_load_register(StringBuilder *builder, Arm64Register load_reg, Arm64Register base_reg, s16 offset)
-{
-    u32 inst = 0xF8400400 | (((u32) offset & 0x1FF) << 12) | ((u32) base_reg << 5) | load_reg;
-    string_builder_append_u32le(builder, inst);
-}
-
-static inline void
 arm64_ret(StringBuilder *builder)
 {
     u32 inst = 0xD65F0000 | ((u32) ARM64_R30 << 5);
@@ -88,13 +74,17 @@ arm64_ret(StringBuilder *builder)
 static inline void
 arm64_push_register(StringBuilder *builder, Arm64Register reg)
 {
-    arm64_store_register(builder, reg, ARM64_SP, -16);
+    // STR (immediate) pre-index
+    u32 inst = 0xF8000C00 | (((u32) -16 & 0x1FF) << 12) | ((u32) ARM64_SP << 5) | reg;
+    string_builder_append_u32le(builder, inst);
 }
 
 static inline void
 arm64_pop_register(StringBuilder *builder, Arm64Register reg)
 {
-    arm64_load_register(builder, reg, ARM64_SP, 16);
+    // LDR (immediate) post-index
+    u32 inst = 0xF8400400 | (((u32) 16 & 0x1FF) << 12) | ((u32) ARM64_SP << 5) | reg;
+    string_builder_append_u32le(builder, inst);
 }
 
 static inline void
@@ -1197,7 +1187,7 @@ arm64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsP
             assert(stack_allocated <= 0xFFFF);
             arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_allocated);
 
-            arm64_load_register(&codegen->section_text, ARM64_R30, ARM64_SP, 16);
+            arm64_pop_register(&codegen->section_text, ARM64_R30); // restore link register
             arm64_ret(&codegen->section_text);
         } break;
 
@@ -1257,7 +1247,7 @@ arm64_emit_function(Compiler *compiler, Codegen *codegen, Ast *func, JulsPlatfor
         parameter->stack_offset = compiler->current_stack_offset;
     }
 
-    arm64_store_register(&codegen->section_text, ARM64_R30, ARM64_SP, -16);
+    arm64_push_register(&codegen->section_text, ARM64_R30); // save link register
     compiler->current_stack_offset += 16;
 
     push_scope(compiler);
@@ -1277,7 +1267,7 @@ arm64_emit_function(Compiler *compiler, Codegen *codegen, Ast *func, JulsPlatfor
         assert(stack_allocated <= 0xFFFF);
         arm64_add_immediate12(&codegen->section_text, ARM64_SP, ARM64_SP, (u16) stack_allocated);
 
-        arm64_load_register(&codegen->section_text, ARM64_R30, ARM64_SP, 16);
+        arm64_pop_register(&codegen->section_text, ARM64_R30); // restore link register
         arm64_ret(&codegen->section_text);
     }
 }
