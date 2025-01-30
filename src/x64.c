@@ -55,6 +55,14 @@ x64_pop_register(StringBuilder *builder, X64Register reg)
 }
 
 static inline void
+x64_move_registers(StringBuilder *builder, X64Register dst_reg, X64Register src_reg)
+{
+    string_builder_append_u8(builder, REX_W);
+    string_builder_append_u8(builder, 0x89);
+    string_builder_append_u8(builder, ModRM(3, src_reg, dst_reg));
+}
+
+static inline void
 x64_add_immediate32_unsigned_to_register(StringBuilder *builder, X64Register reg, u32 value)
 {
     if (value <= 0xFF)
@@ -167,13 +175,13 @@ x64_subtract_registers(StringBuilder *builder, X64Register dst_reg, X64Register 
 }
 
 static inline void
-x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64 src_stack_offset, u64 size)
+x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, s64 src_stack_offset, u64 size)
 {
     switch (size)
     {
         case 1:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x8A);
                 string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
@@ -182,7 +190,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x8A);
                 string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
@@ -193,7 +201,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
 
         case 2:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x8B);
@@ -203,7 +211,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x8B);
@@ -215,7 +223,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
 
         case 4:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x8B);
                 string_builder_append_u8(builder, ModRM(1, dst_reg, X64_RSP));
@@ -224,7 +232,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x8B);
                 string_builder_append_u8(builder, ModRM(2, dst_reg, X64_RSP));
@@ -235,7 +243,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
 
         case 8:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -245,7 +253,7 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -263,13 +271,13 @@ x64_copy_from_stack_to_register(StringBuilder *builder, X64Register dst_reg, u64
 }
 
 static inline void
-x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X64Register src_reg, u64 size)
+x64_copy_from_register_to_stack(StringBuilder *builder, s64 dst_stack_offset, X64Register src_reg, u64 size)
 {
     switch (size)
     {
         case 1:
         {
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x88);
                 string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
@@ -278,7 +286,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x88);
                 string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
@@ -289,7 +297,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
 
         case 2:
         {
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x89);
@@ -299,7 +307,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x89);
@@ -311,7 +319,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
 
         case 4:
         {
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x89);
                 string_builder_append_u8(builder, ModRM(1, src_reg, X64_RSP));
@@ -320,7 +328,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x89);
                 string_builder_append_u8(builder, ModRM(2, src_reg, X64_RSP));
@@ -331,7 +339,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
 
         case 8:
         {
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -341,7 +349,7 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -359,13 +367,13 @@ x64_copy_from_register_to_stack(StringBuilder *builder, u64 dst_stack_offset, X6
 }
 
 static inline void
-x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 src_stack_offset, u64 size)
+x64_copy_from_stack_to_stack(StringBuilder *builder, s64 dst_stack_offset, s64 src_stack_offset, u64 size)
 {
     switch (size)
     {
         case 1:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x8A);
                 string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
@@ -374,7 +382,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x8A);
                 string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
@@ -382,7 +390,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
                 string_builder_append_u32le(builder, (u32) src_stack_offset);
             }
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x88);
                 string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
@@ -391,7 +399,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x88);
                 string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
@@ -402,7 +410,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
         case 2:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x8B);
@@ -412,7 +420,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x8B);
@@ -421,7 +429,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
                 string_builder_append_u32le(builder, (u32) src_stack_offset);
             }
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x89);
@@ -431,7 +439,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x66);
                 string_builder_append_u8(builder, 0x89);
@@ -443,7 +451,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
         case 4:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x8B);
                 string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
@@ -452,7 +460,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x8B);
                 string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
@@ -460,7 +468,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
                 string_builder_append_u32le(builder, (u32) src_stack_offset);
             }
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, 0x89);
                 string_builder_append_u8(builder, ModRM(1, X64_RAX, X64_RSP));
@@ -469,7 +477,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, 0x89);
                 string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
@@ -480,7 +488,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
         case 8:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -490,7 +498,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -499,7 +507,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
                 string_builder_append_u32le(builder, (u32) src_stack_offset);
             }
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -509,7 +517,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -521,7 +529,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
         case 16:
         {
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -531,7 +539,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -542,7 +550,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
             src_stack_offset += 8;
 
-            if (src_stack_offset <= 0xFF)
+            if ((src_stack_offset >= INT8_MIN) && (src_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -552,7 +560,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(src_stack_offset <= 0xFFFFFFFF);
+                assert((src_stack_offset >= INT32_MIN) && (src_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x8B);
@@ -561,7 +569,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
                 string_builder_append_u32le(builder, (u32) src_stack_offset);
             }
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -571,7 +579,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -582,7 +590,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
 
             dst_stack_offset += 8;
 
-            if (dst_stack_offset <= 0xFF)
+            if ((dst_stack_offset >= INT8_MIN) && (dst_stack_offset <= INT8_MAX))
             {
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
@@ -592,7 +600,7 @@ x64_copy_from_stack_to_stack(StringBuilder *builder, u64 dst_stack_offset, u64 s
             }
             else
             {
-                assert(dst_stack_offset <= 0xFFFFFFFF);
+                assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
 
                 string_builder_append_u8(builder, REX_W);
                 string_builder_append_u8(builder, 0x89);
