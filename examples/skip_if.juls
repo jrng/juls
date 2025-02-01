@@ -1,0 +1,13 @@
+#import "print";
+
+main :: ()
+{
+    print("Let's start\n");
+
+    if (false)
+    {
+        print("This will never show\n");
+    }
+
+    print("It's already over\n");
+}

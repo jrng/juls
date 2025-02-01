@@ -1,0 +1,9 @@
+#import "print";
+
+main :: ()
+{
+    for (i: s32 = 0; i < 3; i += 1)
+    {
+        print("Repeat me!\n");
+    }
+}
