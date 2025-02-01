@@ -1,0 +1,8 @@
+#import "basic";
+
+main :: ()
+{
+    a: s32 = 3;
+    b := a = 4;
+    exit(b); // returns 4
+}

@@ -1,6 +1,16 @@
 #define C_MAKE_IMPLEMENTATION
 #include "c_make.h"
 
+const char *examples[] = {
+    "fib_iterative",
+    "fib_recursive",
+    "first",
+    "hello_world",
+    "loop",
+    "simple",
+    "skip_if",
+};
+
 C_MAKE_ENTRY()
 {
     switch (c_make_target)
@@ -35,7 +45,21 @@ C_MAKE_ENTRY()
             c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "src", "main.c"));
 
             c_make_log(CMakeLogLevelInfo, "compile 'juls'\n");
-            c_make_command_run(command);
+            if (c_make_command_run_and_reset_and_wait(&command))
+            {
+                // TODO: adapt output name to platform (.exe)
+                const char *juls_compiler = c_make_c_string_path_concat(c_make_get_build_path(), "juls");
+
+                for (size_t i = 0; i < CMakeArrayCount(examples); i += 1)
+                {
+                    c_make_command_append(&command, juls_compiler);
+                    c_make_command_append(&command, "-o", c_make_c_string_path_concat(c_make_get_build_path(), examples[i]));
+                    c_make_command_append(&command, c_make_c_string_path_concat(c_make_get_source_path(), "examples", c_make_c_string_concat(examples[i], ".juls")));
+
+                    c_make_log(CMakeLogLevelInfo, "compile '%s'\n", examples[i]);
+                    c_make_command_run_and_reset(&command);
+                }
+            }
         } break;
 
         case CMakeTargetInstall:

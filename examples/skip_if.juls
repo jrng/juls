@@ -4,10 +4,20 @@ main :: ()
 {
     print("Let's start\n");
 
+    a: u64 = 1;
+    b: u64 = 2;
+    c: u64 = 3;
+    d: u64 = 4;
+
     if (false)
     {
         print("This will never show\n");
     }
 
+    e := c;
+
     print("It's already over\n");
+
+    // should return 3
+    exit(cast(s32) e);
 }
