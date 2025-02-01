@@ -816,7 +816,7 @@ int main(s32 argument_count, char **arguments)
         }
         else if (pid == 0)
         {
-            s32 ret = execlp("codesign", "codesign", "-s", "-", to_c_string(&default_allocator, output_filename), 0);
+            execlp("codesign", "codesign", "-s", "-", to_c_string(&default_allocator, output_filename), 0);
         }
     }
 #endif

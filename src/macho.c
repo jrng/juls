@@ -350,8 +350,6 @@ generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table
         string_builder_append_u8(&string_table, 0);
     }
 
-    u64 symbol_table_end = string_builder_get_size(builder);
-
     *symbol_table_offset = (u32) symbol_table_start;
 
     u64 string_table_start = string_builder_get_size(builder);
