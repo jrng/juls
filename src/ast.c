@@ -107,7 +107,7 @@ struct Ast
     AstList parameters;
 
     s64 size;
-    u64 stack_offset;
+    s64 stack_offset;
     s64 address;
 
     union

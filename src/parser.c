@@ -36,11 +36,6 @@ typedef struct
     DatatypeId basetype_f32;
     DatatypeId basetype_f64;
     DatatypeId basetype_string;
-
-    // TODO: this is code generation
-    u64 current_stack_offset;
-    u64 stack_allocated[64];
-    s32 stack_allocated_index;
 } Compiler;
 
 static inline SourceLocation
@@ -58,21 +53,6 @@ make_source_location(Parser *parser, String location)
     source_location.count = location.count;
 
     return source_location;
-}
-
-static inline void
-push_scope(Compiler *compiler)
-{
-    assert((compiler->stack_allocated_index + 1) < ArrayCount(compiler->stack_allocated));
-    compiler->stack_allocated_index += 1;
-    compiler->stack_allocated[compiler->stack_allocated_index] = 0;
-}
-
-static inline void
-pop_scope(Compiler *compiler)
-{
-    assert(compiler->stack_allocated_index >= 0);
-    compiler->stack_allocated_index -= 1;
 }
 
 static inline void

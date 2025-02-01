@@ -651,8 +651,10 @@ x64_compare_registers(StringBuilder *builder, X64Register a_reg, X64Register b_r
 }
 
 static inline void
-x64_setcc(StringBuilder *builder, u8 compare_func, u64 dst_stack_offset)
+x64_setcc(StringBuilder *builder, u8 compare_func, s64 dst_stack_offset)
 {
+    assert((dst_stack_offset >= INT32_MIN) && (dst_stack_offset <= INT32_MAX));
+
     string_builder_append_u8(builder, 0x0F);
     string_builder_append_u8(builder, compare_func);
     string_builder_append_u8(builder, ModRM(2, X64_RAX, X64_RSP));
@@ -665,6 +667,25 @@ x64_compare_al_to_zero(StringBuilder *builder, X64Register reg)
 {
     string_builder_append_u8(builder, 0x3C);
     string_builder_append_u8(builder, 0x00);
+}
+
+static inline void
+x64_commit_stack(Codegen *codegen, StringBuilder *builder)
+{
+    if (codegen->stack_allocated < codegen->stack_committed)
+    {
+        s64 size = codegen->stack_committed - codegen->stack_allocated;
+        assert(size <= 0xFFFFFFFF);
+        x64_add_immediate32_unsigned_to_register(builder, X64_RSP, (u32) size);
+        codegen->stack_committed = codegen->stack_allocated;
+    }
+    else if (codegen->stack_allocated > codegen->stack_committed)
+    {
+        s64 size = codegen->stack_allocated - codegen->stack_committed;
+        assert(size <= 0xFFFFFFFF);
+        x64_subtract_immediate32_unsigned_from_register(builder, X64_RSP, (u32) size);
+        codegen->stack_committed = codegen->stack_allocated;
+    }
 }
 
 static void
@@ -685,14 +706,15 @@ x64_emit_cast(Compiler *compiler, Codegen *codegen, DatatypeId from_type_id, Dat
     {
         if (from_type->size > to_type->size)
         {
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, from_type->size);
+            s64 from_type_stack_offset = codegen->stack_allocated;
 
-            assert(from_type_stack_size <= 0xFFFFFFFF);
-            assert(to_type_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (from_type_stack_size - to_type_stack_size));
-            compiler->current_stack_offset -= from_type_stack_size - to_type_stack_size;
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - from_type_stack_offset, from_type->size);
 
-            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, to_type->size);
+            pop_stack(codegen, from_type_stack_size);
+            s64 to_type_stack_offset = push_stack(codegen, to_type_stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
+
+            x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - to_type_stack_offset, X64_RAX, to_type->size);
         }
         else if (from_type->size < to_type->size)
         {
@@ -716,17 +738,18 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             u64 stack_size = datatype->size;
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset += stack_size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, expr->_bool ? 1 : 0);
-            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
+            x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_LITERAL_INTEGER:
         {
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
+
+            u64 stack_size = datatype->size;
 
             if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
                 (expr->_s64 >= 0))
@@ -752,13 +775,10 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                 }
             }
 
-            u64 stack_size = datatype->size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset += stack_size;
-
-            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
+            x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_LITERAL_STRING:
@@ -770,9 +790,8 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             u64 stack_size = datatype->size;
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset += stack_size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, expr->name.count);
 
@@ -784,8 +803,8 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
             void *patch_addr = string_builder_append_size(&codegen->section_text, 4);
             u64 instruction_offset = string_builder_get_size(&codegen->section_text);
 
-            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, 8);
-            x64_copy_from_register_to_stack(&codegen->section_text, 8, X64_RBX, 8);
+            x64_copy_from_register_to_stack(&codegen->section_text, (codegen->stack_committed - expr->stack_offset) + 0, X64_RAX, 8);
+            x64_copy_from_register_to_stack(&codegen->section_text, (codegen->stack_committed - expr->stack_offset) + 8, X64_RBX, 8);
 
             array_append(&codegen->patches, ((Patch) { .patch = patch_addr,
                                                        .instruction_offset = instruction_offset,
@@ -798,17 +817,15 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             Ast *decl = expr->decl;
 
-            assert(decl->stack_offset > 0);
-
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = datatype->size;
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset += stack_size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
-            x64_copy_from_stack_to_stack(&codegen->section_text, 0, compiler->current_stack_offset - decl->stack_offset, datatype->size);
+            x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset,
+                                         codegen->stack_committed - decl->stack_offset, datatype->size);
         } break;
 
         case AST_KIND_EXPRESSION_EQUAL:
@@ -833,22 +850,26 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             u64 left_stack_size = left_datatype->size;
             u64 right_stack_size = right_datatype->size;
-            u64 total_stack_size = left_stack_size + right_stack_size;
 
             assert(expr->type_id == compiler->basetype_bool);
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, left_datatype->size);
+            assert(expr->right_expr->stack_offset == codegen->stack_allocated);
+            assert(expr->left_expr->stack_offset == (codegen->stack_allocated - right_datatype->size));
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, codegen->stack_committed - expr->right_expr->stack_offset, right_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - expr->left_expr->stack_offset, left_datatype->size);
+
+            pop_stack(codegen, right_stack_size);
+            pop_stack(codegen, left_stack_size);
 
             // TODO: maybe sign extend arguments
 
-            assert(stack_size <= 0xFFFFFFFF);
-            assert(total_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (total_stack_size - stack_size));
-            compiler->current_stack_offset -= total_stack_size - stack_size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
+
+            s64 dst_stack_offset = codegen->stack_committed - expr->stack_offset;
 
             x64_compare_registers(&codegen->section_text, X64_RAX, X64_RBX, max_datatype_size);
 
@@ -858,54 +879,54 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
             {
                 if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x94, 0);
+                    x64_setcc(&codegen->section_text, 0x94, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x95, 0);
+                    x64_setcc(&codegen->section_text, 0x95, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
                 {
-                    x64_setcc(&codegen->section_text, 0x9C, 0);
+                    x64_setcc(&codegen->section_text, 0x9C, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
                 {
-                    x64_setcc(&codegen->section_text, 0x9F, 0);
+                    x64_setcc(&codegen->section_text, 0x9F, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x9E, 0);
+                    x64_setcc(&codegen->section_text, 0x9E, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x9D, 0);
+                    x64_setcc(&codegen->section_text, 0x9D, dst_stack_offset);
                 }
             }
             else
             {
                 if (expr->kind == AST_KIND_EXPRESSION_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x94, 0);
+                    x64_setcc(&codegen->section_text, 0x94, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_NOT_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x95, 0);
+                    x64_setcc(&codegen->section_text, 0x95, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS)
                 {
-                    x64_setcc(&codegen->section_text, 0x92, 0);
+                    x64_setcc(&codegen->section_text, 0x92, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER)
                 {
-                    x64_setcc(&codegen->section_text, 0x97, 0);
+                    x64_setcc(&codegen->section_text, 0x97, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_LESS_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x96, 0);
+                    x64_setcc(&codegen->section_text, 0x96, dst_stack_offset);
                 }
                 else if (expr->kind == AST_KIND_EXPRESSION_COMPARE_GREATER_EQUAL)
                 {
-                    x64_setcc(&codegen->section_text, 0x93, 0);
+                    x64_setcc(&codegen->section_text, 0x93, dst_stack_offset);
                 }
             }
         } break;
@@ -921,22 +942,24 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             u64 left_stack_size = left_datatype->size;
             u64 right_stack_size = right_datatype->size;
-            u64 total_stack_size = left_stack_size + right_stack_size;
 
             assert(expr->type_id);
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, left_datatype->size);
+            assert(expr->right_expr->stack_offset == codegen->stack_allocated);
+            assert(expr->left_expr->stack_offset == (codegen->stack_allocated - right_datatype->size));
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, codegen->stack_committed - expr->right_expr->stack_offset, right_datatype->size);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - expr->left_expr->stack_offset, left_datatype->size);
+
+            pop_stack(codegen, right_stack_size);
+            pop_stack(codegen, left_stack_size);
 
             // TODO: maybe sign extend arguments
 
-            assert(stack_size <= 0xFFFFFFFF);
-            assert(total_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (total_stack_size - stack_size));
-            compiler->current_stack_offset -= total_stack_size - stack_size;
+            expr->stack_offset = push_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             if (expr->kind == AST_KIND_EXPRESSION_BINOP_ADD)
             {
@@ -948,7 +971,7 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                 x64_subtract_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
             }
 
-            x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
+            x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset, X64_RAX, datatype->size);
         } break;
 
         case AST_KIND_FUNCTION_CALL:
@@ -962,11 +985,10 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                 assert(expr->decl);
 
                 Datatype *return_type = get_datatype(&compiler->datatypes, expr->decl->type_id);
+
                 u64 return_type_stack_size = return_type->size;
 
-                assert(return_type_stack_size <= 0xFFFFFFFF);
-                x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
-                compiler->current_stack_offset += return_type_stack_size;
+                expr->stack_offset = push_stack(codegen, return_type_stack_size);
             }
             else
             {
@@ -975,6 +997,7 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
             u64 arguments_stack_size = 0;
 
+            // TODO: forward
             ForReversed(argument, expr->children.last)
             {
                 // TODO: does the size match the expression?
@@ -1053,9 +1076,8 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                 assert(!"not implemented");
             }
 
-            assert(arguments_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) arguments_stack_size);
-            compiler->current_stack_offset -= arguments_stack_size;
+            pop_stack(codegen, arguments_stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
         } break;
 
         case AST_KIND_ASSIGN:
@@ -1076,30 +1098,25 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
             Datatype *right_datatype = get_datatype(&compiler->datatypes, expr->right_expr->type_id);
 
-            u64 stack_size = datatype->size;
-            u64 right_stack_size = right_datatype->size;
-
-            if (expr->kind != AST_KIND_ASSIGN)
+            if (expr->kind == AST_KIND_ASSIGN)
             {
-                assert(stack_size <= 0xFFFFFFFF);
-                x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-                compiler->current_stack_offset += stack_size;
+                x64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
+                assert(expr->right_expr->stack_offset == codegen->stack_allocated);
+                x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - decl->stack_offset,
+                                             codegen->stack_committed - expr->right_expr->stack_offset, datatype->size);
 
-                x64_copy_from_stack_to_stack(&codegen->section_text, 0, compiler->current_stack_offset - decl->stack_offset, datatype->size);
+                expr->stack_offset = expr->right_expr->stack_offset;
             }
-
-            x64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
-
-            if (expr->kind != AST_KIND_ASSIGN)
+            else
             {
-                x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, 0, right_datatype->size);
-                x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, right_stack_size, datatype->size);
+                x64_emit_expression(compiler, codegen, expr->right_expr, target_platform);
+                assert(expr->right_expr->stack_offset == codegen->stack_allocated);
+                x64_copy_from_stack_to_register(&codegen->section_text, X64_RBX, codegen->stack_committed - expr->right_expr->stack_offset, right_datatype->size);
+                x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - decl->stack_offset, datatype->size);
+
+                expr->stack_offset = expr->right_expr->stack_offset;
 
                 // TODO: maybe sign extend arguments
-
-                assert(right_stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) right_stack_size);
-                compiler->current_stack_offset -= right_stack_size;
 
                 if (expr->kind == AST_KIND_PLUS_ASSIGN)
                 {
@@ -1111,11 +1128,9 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                     x64_subtract_registers(&codegen->section_text, X64_RAX, X64_RBX, datatype->size);
                 }
 
-                x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
+                x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - decl->stack_offset, X64_RAX, datatype->size);
+                x64_copy_from_register_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset, X64_RAX, datatype->size);
             }
-
-            // TODO: does the size match the expression?
-            x64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - decl->stack_offset, 0, datatype->size);
         } break;
 
         case AST_KIND_MEMBER:
@@ -1125,29 +1140,30 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
                 if (strings_are_equal(expr->name, S("count")) ||
                     strings_are_equal(expr->name, S("data")))
                 {
-                    x64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
-
                     Datatype *left_datatype = get_datatype(&compiler->datatypes, expr->left_expr->type_id);
                     Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
                     u64 left_stack_size = left_datatype->size;
                     u64 stack_size = datatype->size;
 
+                    expr->stack_offset = push_stack(codegen, stack_size);
+                    x64_commit_stack(codegen, &codegen->section_text);
+
+                    x64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
+
                     if (strings_are_equal(expr->name, S("count")))
                     {
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, datatype->size);
+                        x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset,
+                                                     (codegen->stack_committed - expr->left_expr->stack_offset) + 0, datatype->size);
                     }
                     else if (strings_are_equal(expr->name, S("data")))
                     {
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 8, datatype->size);
+                        x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - expr->stack_offset,
+                                                     (codegen->stack_committed - expr->left_expr->stack_offset) + 8, datatype->size);
                     }
 
-                    assert(left_stack_size <= 0xFFFFFFFF);
-                    assert(stack_size <= 0xFFFFFFFF);
-                    x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) (left_stack_size - stack_size));
-                    compiler->current_stack_offset -= left_stack_size - stack_size;
-
-                    x64_copy_from_register_to_stack(&codegen->section_text, 0, X64_RAX, datatype->size);
+                    pop_stack(codegen, left_stack_size);
+                    x64_commit_stack(codegen, &codegen->section_text);
                 }
                 else
                 {
@@ -1164,6 +1180,9 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
         {
             x64_emit_expression(compiler, codegen, expr->left_expr, target_platform);
             x64_emit_cast(compiler, codegen, expr->left_expr->type_id, expr->type_id);
+
+            // TODO: hack
+            expr->stack_offset = codegen->stack_allocated;
         } break;
 
         default:
@@ -1176,7 +1195,7 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
 
 static void
 x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPlatform target_platform,
-                   Datatype *return_type, u64 return_type_stack_size)
+                   Datatype *return_type, s64 return_value_stack_offset)
 {
     switch (statement->kind)
     {
@@ -1184,25 +1203,23 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
         {
             Datatype *datatype = get_datatype(&compiler->datatypes, statement->type_id);
 
-            u64 stack_size = datatype->size;
-
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_subtract_immediate32_unsigned_from_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset += stack_size;
-            statement->stack_offset = compiler->current_stack_offset;
-
-            compiler->stack_allocated[compiler->stack_allocated_index] += stack_size;
+            statement->stack_offset = allocate_stack(codegen, datatype->size);
 
             if (statement->right_expr)
             {
+                Datatype *right_datatype = get_datatype(&compiler->datatypes, statement->right_expr->type_id);
+
+                u64 right_stack_size = right_datatype->size;
+
                 x64_emit_expression(compiler, codegen, statement->right_expr, target_platform);
 
+                assert(statement->right_expr->stack_offset == codegen->stack_allocated);
                 // TODO: does the size match the expression?
-                x64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - statement->stack_offset, 0, datatype->size);
+                x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - statement->stack_offset,
+                                             codegen->stack_committed - statement->right_expr->stack_offset, datatype->size);
 
-                assert(stack_size <= 0xFFFFFFFF);
-                x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-                compiler->current_stack_offset -= stack_size;
+                pop_stack(codegen, right_stack_size);
+                x64_commit_stack(codegen, &codegen->section_text);
             }
         } break;
 
@@ -1215,11 +1232,11 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, datatype->size);
+            assert(statement->left_expr->stack_offset == codegen->stack_allocated);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - statement->left_expr->stack_offset, datatype->size);
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset -= stack_size;
+            pop_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             x64_compare_al_to_zero(&codegen->section_text, X64_RAX);
 
@@ -1237,7 +1254,12 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
                 else_code = statement->children.last;
             }
 
-            x64_emit_statement(compiler, codegen, if_code, target_platform, return_type, return_type_stack_size);
+            push_scope(codegen);
+
+            x64_emit_statement(compiler, codegen, if_code, target_platform, return_type, return_value_stack_offset);
+
+            pop_scope(codegen);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             s32 *end_patch = 0;
 
@@ -1255,7 +1277,12 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
 
             if (else_code)
             {
-                x64_emit_statement(compiler, codegen, else_code, target_platform, return_type, return_type_stack_size);
+                push_scope(codegen);
+
+                x64_emit_statement(compiler, codegen, else_code, target_platform, return_type, return_value_stack_offset);
+
+                pop_scope(codegen);
+                x64_commit_stack(codegen, &codegen->section_text);
 
                 s64 end_target = string_builder_get_size(&codegen->section_text);
                 *end_patch = (s32) (end_target - end_offset);
@@ -1264,9 +1291,9 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
 
         case AST_KIND_FOR:
         {
-            push_scope(compiler);
+            push_scope(codegen);
 
-            x64_emit_statement(compiler, codegen, statement->decl, target_platform, return_type, return_type_stack_size);
+            x64_emit_statement(compiler, codegen, statement->decl, target_platform, return_type, return_value_stack_offset);
 
             s64 start_target = string_builder_get_size(&codegen->section_text);
 
@@ -1277,11 +1304,11 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
 
             u64 stack_size = datatype->size;
 
-            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, 0, datatype->size);
+            assert(statement->left_expr->stack_offset == codegen->stack_allocated);
+            x64_copy_from_stack_to_register(&codegen->section_text, X64_RAX, codegen->stack_committed - statement->left_expr->stack_offset, datatype->size);
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset -= stack_size;
+            pop_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             x64_compare_al_to_zero(&codegen->section_text, X64_RAX);
 
@@ -1291,16 +1318,15 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
             s32 *end_patch = string_builder_append_size(&codegen->section_text, 4);
             s64 end_offset = string_builder_get_size(&codegen->section_text);
 
-            x64_emit_statement(compiler, codegen, statement->children.first, target_platform, return_type, return_type_stack_size);
+            x64_emit_statement(compiler, codegen, statement->children.first, target_platform, return_type, return_value_stack_offset);
             x64_emit_expression(compiler, codegen, statement->right_expr, target_platform);
 
             Datatype *right_datatype = get_datatype(&compiler->datatypes, statement->right_expr->type_id);
 
             u64 right_stack_size = right_datatype->size;
 
-            assert(right_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) right_stack_size);
-            compiler->current_stack_offset -= right_stack_size;
+            pop_stack(codegen, right_stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
             string_builder_append_u8(&codegen->section_text, 0xE9);
             s32 *start_patch = string_builder_append_size(&codegen->section_text, 4);
@@ -1310,55 +1336,50 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
             s64 end_target = string_builder_get_size(&codegen->section_text);
             *end_patch = (s32) (end_target - end_offset);
 
-            u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
-            pop_scope(compiler);
-
-            assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
-            compiler->current_stack_offset -= stack_allocated;
+            pop_scope(codegen);
+            x64_commit_stack(codegen, &codegen->section_text);
         } break;
 
         case AST_KIND_RETURN:
         {
             assert(statement->left_expr);
 
+            Datatype *datatype = get_datatype(&compiler->datatypes, statement->left_expr->type_id);
+
+            u64 stack_size = datatype->size;
+
             x64_emit_expression(compiler, codegen, statement->left_expr, target_platform);
 
-            x64_copy_from_stack_to_stack(&codegen->section_text, compiler->current_stack_offset - return_type_stack_size, 0, return_type->size);
+            assert(statement->left_expr->stack_offset == codegen->stack_allocated);
+            x64_copy_from_stack_to_stack(&codegen->section_text, codegen->stack_committed - return_value_stack_offset,
+                                         codegen->stack_committed - statement->left_expr->stack_offset, return_type->size);
 
-            assert(return_type_stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) return_type_stack_size);
-            compiler->current_stack_offset -= return_type_stack_size;
+            pop_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
 
-            u64 stack_allocated = 0;
+            assert(codegen->stack_scope_index > 0);
+            assert(codegen->stack_allocated == codegen->stack_scopes[codegen->stack_scope_index]);
 
-            while (compiler->stack_allocated_index >= 0)
+            if (codegen->stack_committed > 0)
             {
-                stack_allocated += compiler->stack_allocated[compiler->stack_allocated_index];
-                pop_scope(compiler);
+                assert(codegen->stack_committed <= 0xFFFFFFFF);
+                x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) codegen->stack_committed);
             }
-
-            assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
 
             x64_ret(&codegen->section_text);
         } break;
 
         case AST_KIND_BLOCK:
         {
-            push_scope(compiler);
+            push_scope(codegen);
 
             For(stmt, statement->children.first)
             {
-                x64_emit_statement(compiler, codegen, stmt, target_platform, return_type, return_type_stack_size);
+                x64_emit_statement(compiler, codegen, stmt, target_platform, return_type, return_value_stack_offset);
             }
 
-            u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
-            pop_scope(compiler);
-
-            assert(stack_allocated <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
-            compiler->current_stack_offset -= stack_allocated;
+            pop_scope(codegen);
+            x64_commit_stack(codegen, &codegen->section_text);
         } break;
 
         default:
@@ -1366,12 +1387,10 @@ x64_emit_statement(Compiler *compiler, Codegen *codegen, Ast *statement, JulsPla
             x64_emit_expression(compiler, codegen, statement, target_platform);
 
             Datatype *datatype = get_datatype(&compiler->datatypes, statement->type_id);
-
             u64 stack_size = datatype->size;
 
-            assert(stack_size <= 0xFFFFFFFF);
-            x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_size);
-            compiler->current_stack_offset -= stack_size;
+            pop_stack(codegen, stack_size);
+            x64_commit_stack(codegen, &codegen->section_text);
         } break;
     }
 }
@@ -1383,43 +1402,43 @@ x64_emit_function(Compiler *compiler, Codegen *codegen, Ast *func, JulsPlatform 
 
     func->address = string_builder_get_size(&codegen->section_text);
 
-    compiler->current_stack_offset = 0;
-    compiler->stack_allocated_index = -1;
+    codegen->stack_allocated = 0;
+    codegen->stack_committed = 0;
+    codegen->stack_scopes[0] = 0;
+    codegen->stack_scope_index = 0;
 
-    Datatype *return_type = get_datatype(&compiler->datatypes, func->type_id);
-    u64 return_type_stack_size = return_type->size;
-    compiler->current_stack_offset += return_type_stack_size;
+    s64 stack_offset = 0;
 
-    ForReversed(parameter, func->parameters.last)
+    // that's the return address
+    stack_offset -= 8;
+
+    // TODO: reverse
+    For(parameter, func->parameters.last)
     {
         Datatype *datatype = get_datatype(&compiler->datatypes, parameter->type_id);
-
         u64 stack_size = datatype->size;
 
-        compiler->current_stack_offset += stack_size;
-        parameter->stack_offset = compiler->current_stack_offset;
+        parameter->stack_offset = stack_offset;
+        stack_offset -= stack_size;
     }
 
-    // that's the call return address
-    compiler->current_stack_offset += 8;
+    Datatype *return_type = get_datatype(&compiler->datatypes, func->type_id);
 
-    push_scope(compiler);
+    s64 return_value_stack_offset = stack_offset;
+
+    push_scope(codegen);
 
     For(statement, func->children.first)
     {
-        x64_emit_statement(compiler, codegen, statement, target_platform, return_type, return_type_stack_size);
+        x64_emit_statement(compiler, codegen, statement, target_platform, return_type, return_value_stack_offset);
     }
+
+    pop_scope(codegen);
+    assert(codegen->stack_scope_index == 0);
 
     if (!func->type_def)
     {
-        assert(compiler->stack_allocated_index == 0);
-
-        u64 stack_allocated = compiler->stack_allocated[compiler->stack_allocated_index];
-        pop_scope(compiler);
-
-        assert(stack_allocated <= 0xFFFFFFFF);
-        x64_add_immediate32_unsigned_to_register(&codegen->section_text, X64_RSP, (u32) stack_allocated);
-
+        x64_commit_stack(codegen, &codegen->section_text);
         x64_ret(&codegen->section_text);
     }
 }

@@ -500,7 +500,56 @@ typedef struct
     StringBuilder section_cstring;
     FunctionCallPatchArray function_call_patches;
     PatchArray patches;
+
+    // TODO: put this into its own struct as this should not get passed to file generation
+    s64 stack_allocated;
+    s64 stack_committed;
+    s64 stack_scopes[64];
+    s32 stack_scope_index;
 } Codegen;
+
+static inline void
+push_scope(Codegen *codegen)
+{
+    assert(codegen->stack_scope_index >= 0);
+    assert((codegen->stack_scope_index + 1) < ArrayCount(codegen->stack_scopes));
+    codegen->stack_scope_index += 1;
+    codegen->stack_scopes[codegen->stack_scope_index] = codegen->stack_scopes[codegen->stack_scope_index - 1];
+}
+
+static inline void
+pop_scope(Codegen *codegen)
+{
+    assert(codegen->stack_scope_index > 0);
+    assert(codegen->stack_allocated == codegen->stack_scopes[codegen->stack_scope_index]);
+    codegen->stack_allocated = codegen->stack_scopes[codegen->stack_scope_index - 1];
+    codegen->stack_scope_index -= 1;
+}
+
+static inline s64
+allocate_stack(Codegen *codegen, s64 size)
+{
+    assert(codegen->stack_scope_index > 0);
+    assert(codegen->stack_allocated == codegen->stack_scopes[codegen->stack_scope_index]);
+    codegen->stack_scopes[codegen->stack_scope_index] += size;
+    codegen->stack_allocated += size;
+    return codegen->stack_allocated;
+}
+
+static inline s64
+push_stack(Codegen *codegen, s64 size)
+{
+    assert(codegen->stack_scope_index > 0);
+    codegen->stack_allocated += size;
+    return codegen->stack_allocated;
+}
+
+static inline void
+pop_stack(Codegen *codegen, s64 size)
+{
+    assert(codegen->stack_scope_index > 0);
+    codegen->stack_allocated -= size;
+}
 
 #include "arm64.c"
 #include "x64.c"

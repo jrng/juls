@@ -307,7 +307,9 @@ generate_macho(StringBuilder *builder, Codegen codegen, SymbolTable symbol_table
                 s64 page_count = string_page - instruction_page;
                 u64 offset = string_address & 0xFFF;
 
+                // ADRP
                 *((u32 *) patch->patch + 0) = 0x90000000 | ((page_count & 0x3) << 29) | ((page_count & 0x1FFFFC) << 3) | ARM64_R1;
+                // ADD (immediate)
                 *((u32 *) patch->patch + 1) = 0x91000000 | ((u32) offset << 10) | (ARM64_R1 << 5) | ARM64_R1;
             }
             else if (target_architecture == JulsArchitectureX86_64)
