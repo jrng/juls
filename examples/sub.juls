@@ -1,0 +1,11 @@
+#import "basic";
+
+sub :: (a: s32, b: s32) -> s32
+{
+    return a - b;
+}
+
+main :: ()
+{
+    exit(sub(13, 7)); // returns 6
+}

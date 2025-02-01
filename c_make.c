@@ -9,6 +9,7 @@ const char *examples[] = {
     "loop",
     "simple",
     "skip_if",
+    "sub",
 };
 
 C_MAKE_ENTRY()

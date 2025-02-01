@@ -846,8 +846,7 @@ arm64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatf
 
             u64 arguments_stack_size = 0;
 
-            // TODO: forward
-            ForReversed(argument, expr->children.last)
+            For(argument, expr->children.first)
             {
                 // TODO: does the size match the expression?
                 arm64_emit_expression(compiler, codegen, argument, target_platform);
@@ -1255,8 +1254,7 @@ arm64_emit_function(Compiler *compiler, Codegen *codegen, Ast *func, JulsPlatfor
     // that's the return address
     stack_offset -= 16;
 
-    // TODO: reverse
-    For(parameter, func->parameters.last)
+    ForReversed(parameter, func->parameters.last)
     {
         Datatype *datatype = get_datatype(&compiler->datatypes, parameter->type_id);
 
