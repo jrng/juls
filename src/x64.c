@@ -1012,37 +1012,47 @@ x64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatfor
             {
                 if (strings_are_equal(left->name, S("exit")))
                 {
+                    assert(ast_list_count(&expr->children) == 1);
+
+                    Ast *first_argument = expr->children.first;
+
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 60);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, codegen->stack_committed - first_argument->stack_offset, 4);
                         x64_syscall(&codegen->section_text);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000001);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, codegen->stack_committed - first_argument->stack_offset, 4);
                         x64_syscall(&codegen->section_text);
                     }
                 }
                 else if (strings_are_equal(left->name, S("write")))
                 {
+                    assert(ast_list_count(&expr->children) == 3);
+
+                    Ast *first_argument  = expr->children.first;
+                    Ast *second_argument = first_argument->next;
+                    Ast *third_argument  = second_argument->next;
+
                     if ((target_platform == JulsPlatformAndroid) ||
                         (target_platform == JulsPlatformLinux))
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 1);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RSI, 4, 8);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDX, 12, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, codegen->stack_committed -  first_argument->stack_offset, 4);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RSI, codegen->stack_committed - second_argument->stack_offset, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDX, codegen->stack_committed -  third_argument->stack_offset, 8);
                         x64_syscall(&codegen->section_text);
                     }
                     else if (target_platform == JulsPlatformMacOs)
                     {
                         x64_move_immediate32_unsigned_into_register(&codegen->section_text, X64_RAX, 0x02000004);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, 0, 4);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RSI, 4, 8);
-                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDX, 12, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDI, codegen->stack_committed -  first_argument->stack_offset, 4);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RSI, codegen->stack_committed - second_argument->stack_offset, 8);
+                        x64_copy_from_stack_to_register(&codegen->section_text, X64_RDX, codegen->stack_committed -  third_argument->stack_offset, 8);
                         x64_syscall(&codegen->section_text);
                     }
                 }
