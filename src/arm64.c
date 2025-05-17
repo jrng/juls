@@ -51,7 +51,7 @@ arm64_bl(StringBuilder *builder, s32 offset)
 static inline void
 arm64_move_immediate16(StringBuilder *builder, Arm64Register reg, u16 value)
 {
-    // MOV (wide immediate)
+    // MOV (wide immediate) / MOVZ
     u32 inst = 0xD2800000 | ((u32) value << 5) | reg;
     string_builder_append_u32le(builder, inst);
 }
@@ -61,6 +61,15 @@ arm64_move_inverted_immediate16(StringBuilder *builder, Arm64Register reg, u16 v
 {
     // MOV (inverted wide immediate)
     u32 inst = 0x92800000 | ((u32) value << 5) | reg;
+    string_builder_append_u32le(builder, inst);
+}
+
+static inline void
+arm64_move_keep_immediate16(StringBuilder *builder, Arm64Register reg, u16 value, u8 shift)
+{
+    assert((shift >= 0) && (shift <= 3));
+    // MOVK
+    u32 inst = 0xF2800000 | ((u32) shift << 21) | ((u32) value << 5) | reg;
     string_builder_append_u32le(builder, inst);
 }
 
@@ -589,29 +598,49 @@ arm64_emit_expression(Compiler *compiler, Codegen *codegen, Ast *expr, JulsPlatf
         {
             Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
 
-            if ((datatype->flags & DATATYPE_FLAG_UNSIGNED) ||
-                (expr->_s64 >= 0))
+            u64 value = expr->_u64;
+
+            u16 val0 = (u16) (value >>  0);
+            u16 val1 = (u16) (value >> 16);
+            u16 val2 = (u16) (value >> 32);
+            u16 val3 = (u16) (value >> 48);
+
+            if (value >= 0xFFFF000000000000)
             {
-                if (expr->_u64 <= 0xFFFF)
+                arm64_move_inverted_immediate16(&codegen->section_text, ARM64_R0, ~val0);
+
+                if (val1 != 0xFFFF)
                 {
-                    arm64_move_immediate16(&codegen->section_text, ARM64_R0, expr->_u16);
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val1, 1);
                 }
-                else
+
+                if (val2 != 0xFFFF)
                 {
-                    assert(!"not implemented");
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val2, 2);
+                }
+
+                if (val3 != 0xFFFF)
+                {
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val3, 3);
                 }
             }
             else
             {
-                u64 inverted = ~expr->_u64;
+                arm64_move_immediate16(&codegen->section_text, ARM64_R0, val0);
 
-                if (inverted <= 0xFFFF)
+                if (val1 != 0)
                 {
-                    arm64_move_inverted_immediate16(&codegen->section_text, ARM64_R0, (u16) inverted);
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val1, 1);
                 }
-                else
+
+                if (val2 != 0)
                 {
-                    assert(!"not implemented");
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val2, 2);
+                }
+
+                if (val3 != 0)
+                {
+                    arm64_move_keep_immediate16(&codegen->section_text, ARM64_R0, val3, 3);
                 }
             }
 
