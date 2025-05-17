@@ -156,34 +156,106 @@ type_check_expression(Compiler *compiler, Ast *expr, DatatypeId preferred_type_i
         {
             if (preferred_type_id)
             {
-                Datatype *datatype = get_datatype(&compiler->datatypes, preferred_type_id);
+                Datatype *datatype = get_datatype(&compiler->datatypes, expr->type_id);
+                Datatype *preferred_datatype = get_datatype(&compiler->datatypes, preferred_type_id);
 
-                assert(datatype->kind == DATATYPE_INTEGER);
+                assert(preferred_datatype->kind == DATATYPE_INTEGER);
 
-                if (datatype->flags & DATATYPE_FLAG_UNSIGNED)
+                DatatypeId type_id;
+
+                u64 max_value_u64;
+                s64 min_value_s64 = 0;
+                s64 max_value_s64;
+
+                if (preferred_datatype->flags & DATATYPE_FLAG_UNSIGNED)
                 {
-                    switch (datatype->size)
+                    switch (preferred_datatype->size)
                     {
-                        case 1: expr->type_id = compiler->basetype_u8;  break;
-                        case 2: expr->type_id = compiler->basetype_u16; break;
-                        case 4: expr->type_id = compiler->basetype_u32; break;
-                        case 8: expr->type_id = compiler->basetype_u64; break;
+                        case 1:
+                        {
+                            max_value_u64 = 0xFF;
+                            max_value_s64 = 0xFF;
+                            type_id = compiler->basetype_u8;
+                        } break;
+
+                        case 2:
+                        {
+                            max_value_u64 = 0xFFFF;
+                            max_value_s64 = 0xFFFF;
+                            type_id = compiler->basetype_u16;
+                        } break;
+
+                        case 4:
+                        {
+                            max_value_u64 = 0xFFFFFFFF;
+                            max_value_s64 = 0xFFFFFFFF;
+                            type_id = compiler->basetype_u32;
+                        } break;
+
+                        case 8:
+                        {
+                            max_value_u64 = 0xFFFFFFFFFFFFFFFF;
+                            max_value_s64 = 0x7FFFFFFFFFFFFFFF;
+                            type_id = compiler->basetype_u64;
+                        } break;
+
                         default: assert(!"not allowed"); break;
                     }
                 }
                 else
                 {
-                    switch (datatype->size)
+                    switch (preferred_datatype->size)
                     {
-                        case 1: expr->type_id = compiler->basetype_s8;  break;
-                        case 2: expr->type_id = compiler->basetype_s16; break;
-                        case 4: expr->type_id = compiler->basetype_s32; break;
-                        case 8: expr->type_id = compiler->basetype_s64; break;
+                        case 1:
+                        {
+                            max_value_u64 = 0x7F;
+                            min_value_s64 = 0xFFFFFFFFFFFFFF80;
+                            max_value_s64 = 0x7F;
+                            type_id = compiler->basetype_s8;
+                        } break;
+
+                        case 2:
+                        {
+                            max_value_u64 = 0x7FFF;
+                            min_value_s64 = 0xFFFFFFFFFFFF8000;
+                            max_value_s64 = 0x7FFF;
+                            type_id = compiler->basetype_s16;
+                        } break;
+
+                        case 4:
+                        {
+                            max_value_u64 = 0x7FFFFFFF;
+                            min_value_s64 = 0xFFFFFFFF80000000;
+                            max_value_s64 = 0x7FFFFFFF;
+                            type_id = compiler->basetype_s32;
+                        } break;
+
+                        case 8:
+                        {
+                            max_value_u64 = 0x7FFFFFFFFFFFFFFF;
+                            min_value_s64 = 0x8000000000000000;
+                            max_value_s64 = 0x7FFFFFFFFFFFFFFF;
+                            type_id = compiler->basetype_s64;
+                        } break;
+
                         default: assert(!"not allowed"); break;
                     }
                 }
 
-                // TODO: check if the value fits in the type
+                if (datatype->flags & DATATYPE_FLAG_UNSIGNED)
+                {
+                    if (expr->_u64 <= max_value_u64)
+                    {
+                        expr->type_id = type_id;
+                    }
+                }
+                else
+                {
+                    if ((expr->_s64 >= min_value_s64) && (expr->_s64 <= max_value_s64))
+                    {
+                        expr->type_id = type_id;
+                    }
+                }
             }
         } break;
 
@@ -327,14 +399,16 @@ type_check_expression(Compiler *compiler, Ast *expr, DatatypeId preferred_type_i
 
                             if (!can_implicitly_cast_to(&compiler->datatypes, argument->type_id, parameter->type_id))
                             {
+                                Datatype *argument_type = get_datatype(&compiler->datatypes, argument->type_id);
                                 Datatype *parameter_type = get_datatype(&compiler->datatypes, parameter->type_id);
 
-                                report_error(*compiler, left_expr->source_location,
-                                             "function '%.*s' expects type %.*s for parameter %d ('%.*s')",
+                                report_error(*compiler, argument->source_location,
+                                             "function '%.*s' expects type %.*s for parameter %d ('%.*s') but got %.*s",
                                              (int) left_expr->name.count, left_expr->name.data,
                                              (int) parameter_type->name.count, parameter_type->name.data,
                                              parameter_position,
-                                             (int) parameter->name.count, parameter->name.data);
+                                             (int) parameter->name.count, parameter->name.data,
+                                             (int) argument_type->name.count, argument_type->name.data);
                             }
 
                             parameter = parameter->next;
